@@ -31,7 +31,7 @@ async-trait = "0.1"
 clap = { version = "4", features = ["derive"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["term", "process", "signal"] }
+nix = { version = "0.29", features = ["term", "process", "signal", "user", "hostname"] }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
