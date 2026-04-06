@@ -2,6 +2,7 @@ mod config;
 mod error;
 
 use error::NeapError;
+use error::Result;
 
 /// Runtime parameters resolved from CLI flags (cli feature) or compile-time
 /// constants (no-cli / NOCLI build).
@@ -22,7 +23,7 @@ pub struct Params {
 // CLI build – parse arguments with clap
 // ---------------------------------------------------------------------------
 #[cfg(feature = "cli")]
-fn parse_params() -> Result<Params, NeapError> {
+fn parse_params() -> Result<Params> {
     use clap::Parser;
 
     /// Neap – a statically-linked SSH server for penetration testing
@@ -89,7 +90,7 @@ fn parse_params() -> Result<Params, NeapError> {
 // NOCLI build – all values from compile-time constants
 // ---------------------------------------------------------------------------
 #[cfg(not(feature = "cli"))]
-fn parse_params() -> Result<Params, NeapError> {
+fn parse_params() -> Result<Params> {
     let lport: u16 = config::LPORT
         .parse()
         .map_err(|_| NeapError::InvalidPort(config::LPORT.to_string()))?;
@@ -131,16 +132,18 @@ async fn main() {
 
     log::info!("neap v{}", config::VERSION);
 
-    if params.listen {
-        log::info!("Mode: bind");
+    let mode = if params.listen || params.lhost.is_empty() {
+        "bind"
     } else {
-        log::info!("Mode: reverse");
-    }
+        "reverse"
+    };
+    log::info!("Mode: {}", mode);
 
     log::info!("Port: {}", params.lport);
 
-    if !params.lhost.is_empty() {
+    if mode == "reverse" {
         log::info!("Target: {}@{}", params.luser, params.lhost);
+        log::info!("Bind port: {}", params.bind_port);
     }
 
     if params.tls_wrap {
