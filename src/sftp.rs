@@ -8,8 +8,7 @@ use std::path::PathBuf;
 
 use log::{error, info};
 use russh_sftp::protocol::{
-    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Packet, Status, StatusCode,
-    Version,
+    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Packet, Status, StatusCode, Version,
 };
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -226,10 +225,7 @@ impl russh_sftp::server::Handler for SftpHandler {
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
         info!("SFTP fstat: {}", handle);
-        let file = self
-            .file_handles
-            .get(&handle)
-            .ok_or(StatusCode::Failure)?;
+        let file = self.file_handles.get(&handle).ok_or(StatusCode::Failure)?;
         let meta = file.metadata().await.map_err(|e| {
             error!("SFTP fstat error: {}", e);
             io_to_status(&e)

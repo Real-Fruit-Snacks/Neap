@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::{error, info};
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, ServerName as TlsServerName, UnixTime};
-use rustls::SignatureScheme;
 use russh::client;
 use russh::keys::key;
 use russh::server::{Config as ServerConfig, Server as _};
 use russh::{Channel, CryptoVec};
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName as TlsServerName, UnixTime};
+use rustls::SignatureScheme;
 
 use crate::error::{NeapError, Result};
 use crate::server::{build_config, generate_host_key, NeapServer};
@@ -30,12 +30,12 @@ fn generate_self_signed_cert(
     rustls::pki_types::PrivateKeyDer<'static>,
 )> {
     let rcgen::CertifiedKey { cert, key_pair } =
-        rcgen::generate_simple_self_signed(vec![sni.to_string()])
-            .map_err(|e| NeapError::Config(format!("Failed to generate self-signed cert: {}", e)))?;
+        rcgen::generate_simple_self_signed(vec![sni.to_string()]).map_err(|e| {
+            NeapError::Config(format!("Failed to generate self-signed cert: {}", e))
+        })?;
 
     let cert_der = cert.der().clone();
-    let key_der =
-        rustls::pki_types::PrivatePkcs8KeyDer::from(key_pair.serialize_der()).into();
+    let key_der = rustls::pki_types::PrivatePkcs8KeyDer::from(key_pair.serialize_der()).into();
 
     Ok((vec![cert_der], key_der))
 }
@@ -187,7 +187,10 @@ async fn run_bind(
 
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         info!("Starting TLS+SSH server on :{}", params.lport);
-        info!("Success: TLS listening on {} (SNI: {})", addr, params.tls_sni);
+        info!(
+            "Success: TLS listening on {} (SNI: {})",
+            addr, params.tls_sni
+        );
 
         loop {
             let (tcp_stream, peer_addr) = listener.accept().await?;
@@ -208,7 +211,10 @@ async fn run_bind(
                                 }
                             }
                             Err(e) => {
-                                error!("Failed to start SSH session (TLS) from {}: {:?}", peer_addr, e);
+                                error!(
+                                    "Failed to start SSH session (TLS) from {}: {:?}",
+                                    peer_addr, e
+                                );
                             }
                         }
                     }
@@ -346,7 +352,7 @@ async fn run_reverse(
         let tls_stream = tls_connector
             .connect(server_name, tcp_stream)
             .await
-            .map_err(|e| NeapError::Io(e))?;
+            .map_err(NeapError::Io)?;
 
         info!("TLS handshake completed with {}", addr);
 
@@ -382,7 +388,11 @@ async fn run_reverse(
         .map_err(NeapError::Ssh)?;
 
     // When bind_port is 0, the server picks a random port and returns it.
-    let listening_port = if actual_port != 0 { actual_port } else { bind_port };
+    let listening_port = if actual_port != 0 {
+        actual_port
+    } else {
+        bind_port
+    };
     let listening_addr = format!("127.0.0.1:{}", listening_port);
     info!("Success: listening at home on {}", listening_addr);
 

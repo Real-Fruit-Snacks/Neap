@@ -54,13 +54,17 @@ fn test_config_ssh_version_format() {
 
 #[test]
 fn test_config_lport_is_valid_port() {
-    let port: u16 = neap::config::LPORT.parse().expect("LPORT should be a valid u16");
+    let port: u16 = neap::config::LPORT
+        .parse()
+        .expect("LPORT should be a valid u16");
     assert!(port > 0);
 }
 
 #[test]
 fn test_config_bport_is_valid_port() {
-    let _port: u16 = neap::config::BPORT.parse().expect("BPORT should be a valid u16");
+    let _port: u16 = neap::config::BPORT
+        .parse()
+        .expect("BPORT should be a valid u16");
 }
 
 #[test]
