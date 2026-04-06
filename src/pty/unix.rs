@@ -50,14 +50,10 @@ pub fn set_win_size(fd: RawFd, win_size: &WinSize) -> std::io::Result<()> {
 /// The child process immediately calls only async-signal-safe functions
 /// (`setsid`, `ioctl`, `dup2`, `close`, `execvp`) and `_exit`, so this is
 /// safe provided the caller does not hold locks that the child would need.
-pub fn spawn_shell(
-    shell: &str,
-    term: &str,
-    win_size: &WinSize,
-) -> std::io::Result<OwnedFd> {
+pub fn spawn_shell(shell: &str, term: &str, win_size: &WinSize) -> std::io::Result<OwnedFd> {
     // Open a new PTY master/slave pair.
-    let OpenptyResult { master, slave } = openpty(None, None)
-        .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+    let OpenptyResult { master, slave } =
+        openpty(None, None).map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
 
     // Set the initial window size on the master fd.
     set_win_size(master.as_raw_fd(), win_size)?;
@@ -66,8 +62,7 @@ pub fn spawn_shell(
     // SAFETY: fork() is called before any multi-threaded tokio runtime
     // operations on the child side. The child immediately calls setsid,
     // dup2, and execvp without touching shared state.
-    let fork_result = unsafe { fork() }
-        .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+    let fork_result = unsafe { fork() }.map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
 
     match fork_result {
         ForkResult::Child => {
@@ -135,7 +130,9 @@ pub fn spawn_shell(
             // shell or "bash").  We use a login-shell convention by prefixing
             // with '-'.
             let argv0 = CString::new(format!("-{}", shell.rsplit('/').next().unwrap_or(shell)))
-                .unwrap_or_else(|_| CString::new("-sh").expect("fallback shell name contains no NUL bytes"));
+                .unwrap_or_else(|_| {
+                    CString::new("-sh").expect("fallback shell name contains no NUL bytes")
+                });
             let argv = [argv0.clone()];
             let _ = execvp(&shell_c, &argv);
 

@@ -8,7 +8,6 @@ mod session;
 mod sftp;
 mod transport;
 
-use error::NeapError;
 use error::Result;
 
 /// Runtime parameters resolved from CLI flags (cli feature) or compile-time

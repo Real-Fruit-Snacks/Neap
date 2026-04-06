@@ -1,13 +1,24 @@
+//! Error types for Neap operations.
+
 use std::fmt;
 
+/// Unified error type for all Neap operations.
 #[derive(Debug)]
 pub enum NeapError {
+    /// I/O error from filesystem or network operations.
     Io(std::io::Error),
+    /// SSH protocol error from russh.
     Ssh(russh::Error),
+    /// SSH key generation or parsing error.
     SshKey(russh_keys::Error),
+    /// TLS configuration or handshake error.
     Tls(rustls::Error),
+    /// Failed to parse a network address.
     AddrParse(std::net::AddrParseError),
+    /// Invalid port number.
+    #[allow(dead_code)]
     InvalidPort(String),
+    /// Configuration error.
     Config(String),
 }
 
@@ -57,4 +68,5 @@ impl From<std::net::AddrParseError> for NeapError {
     }
 }
 
+/// Result type alias using [`NeapError`].
 pub type Result<T> = std::result::Result<T, NeapError>;

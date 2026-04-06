@@ -128,23 +128,28 @@ impl Handler for NeapHandler {
         let ok = bytes_match && len_match;
 
         if ok {
-            info!("Password auth succeeded for user '{}' from {}", user, self.peer_addr);
+            info!(
+                "Password auth succeeded for user '{}' from {}",
+                user, self.peer_addr
+            );
             Ok(Auth::Accept)
         } else {
-            info!("Password auth failed for user '{}' from {}", user, self.peer_addr);
+            info!(
+                "Password auth failed for user '{}' from {}",
+                user, self.peer_addr
+            );
             Ok(Auth::Reject {
                 proceed_with_methods: None,
             })
         }
     }
 
-    async fn auth_publickey(
-        &mut self,
-        user: &str,
-        public_key: &PublicKey,
-    ) -> Result<Auth> {
+    async fn auth_publickey(&mut self, user: &str, public_key: &PublicKey) -> Result<Auth> {
         if config::PUBKEY.is_empty() {
-            info!("Pubkey auth rejected (no pubkey configured) for user '{}' from {}", user, self.peer_addr);
+            info!(
+                "Pubkey auth rejected (no pubkey configured) for user '{}' from {}",
+                user, self.peer_addr
+            );
             return Ok(Auth::Reject {
                 proceed_with_methods: None,
             });
@@ -163,10 +168,16 @@ impl Handler for NeapHandler {
         };
 
         if *public_key == allowed {
-            info!("Pubkey auth succeeded for user '{}' from {}", user, self.peer_addr);
+            info!(
+                "Pubkey auth succeeded for user '{}' from {}",
+                user, self.peer_addr
+            );
             Ok(Auth::Accept)
         } else {
-            info!("Pubkey auth failed for user '{}' from {}", user, self.peer_addr);
+            info!(
+                "Pubkey auth failed for user '{}' from {}",
+                user, self.peer_addr
+            );
             Ok(Auth::Reject {
                 proceed_with_methods: None,
             })
@@ -180,7 +191,11 @@ impl Handler for NeapHandler {
         channel: Channel<Msg>,
         _session: &mut Session,
     ) -> Result<bool> {
-        info!("Session channel opened (id {:?}) from {}", channel.id(), self.peer_addr);
+        info!(
+            "Session channel opened (id {:?}) from {}",
+            channel.id(),
+            self.peer_addr
+        );
         // Store the channel so subsystem_request (SFTP) can consume it later.
         self.channels.insert(channel.id(), channel);
         Ok(true)
@@ -198,7 +213,11 @@ impl Handler for NeapHandler {
         if self.no_shell {
             info!(
                 "Direct TCP/IP denied (no-shell mode): {}:{} from {}:{} peer={}",
-                host_to_connect, port_to_connect, originator_address, originator_port, self.peer_addr
+                host_to_connect,
+                port_to_connect,
+                originator_address,
+                originator_port,
+                self.peer_addr
             );
             return Ok(false);
         }
@@ -225,7 +244,10 @@ impl Handler for NeapHandler {
         port: &mut u32,
         session: &mut Session,
     ) -> Result<bool> {
-        info!("TCP/IP forward request: {}:{} from {}", address, port, self.peer_addr);
+        info!(
+            "TCP/IP forward request: {}:{} from {}",
+            address, port, self.peer_addr
+        );
         let handle = session.handle();
         let addr = address.to_string();
         let requested_port = *port;
@@ -240,17 +262,19 @@ impl Handler for NeapHandler {
 
     // -- Session channel requests ------------------------------------------
 
-    async fn shell_request(
-        &mut self,
-        channel: ChannelId,
-        session: &mut Session,
-    ) -> Result<()> {
+    async fn shell_request(&mut self, channel: ChannelId, session: &mut Session) -> Result<()> {
         if self.no_shell {
-            info!("Shell request denied (no-shell mode) from {}", self.peer_addr);
+            info!(
+                "Shell request denied (no-shell mode) from {}",
+                self.peer_addr
+            );
             session.channel_failure(channel);
             return Ok(());
         }
-        info!("Shell request on channel {:?} from {}", channel, self.peer_addr);
+        info!(
+            "Shell request on channel {:?} from {}",
+            channel, self.peer_addr
+        );
 
         // Check if a PTY was requested for this channel.
         let pty = self.pty_info.get(&channel).cloned();
@@ -301,7 +325,7 @@ impl Handler for NeapHandler {
 
         #[cfg(windows)]
         {
-            use crate::pty::windows::{supports_conpty, ConPtyHandle, deny_pty_legacy};
+            use crate::pty::windows::{deny_pty_legacy, supports_conpty, ConPtyHandle};
 
             if !supports_conpty() {
                 // Legacy Windows — no ConPTY support.
@@ -309,7 +333,9 @@ impl Handler for NeapHandler {
                 session.channel_success(channel);
                 let handle = session.handle();
                 tokio::spawn(async move {
-                    let _ = handle.data(channel, CryptoVec::from_slice(msg.as_bytes())).await;
+                    let _ = handle
+                        .data(channel, CryptoVec::from_slice(msg.as_bytes()))
+                        .await;
                     let _ = handle.data(channel, CryptoVec::from_slice(b"\r\n")).await;
                     let _ = handle.exit_status_request(channel, 255).await;
                     let _ = handle.eof(channel).await;
@@ -347,12 +373,18 @@ impl Handler for NeapHandler {
         session: &mut Session,
     ) -> Result<()> {
         if self.no_shell {
-            info!("Exec request denied (no-shell mode) from {}", self.peer_addr);
+            info!(
+                "Exec request denied (no-shell mode) from {}",
+                self.peer_addr
+            );
             session.channel_failure(channel);
             return Ok(());
         }
         let cmd = String::from_utf8_lossy(data).to_string();
-        info!("Exec request on channel {:?}: '{}' from {}", channel, cmd, self.peer_addr);
+        info!(
+            "Exec request on channel {:?}: '{}' from {}",
+            channel, cmd, self.peer_addr
+        );
         session.channel_success(channel);
         let handle = session.handle();
         tokio::spawn(crate::session::exec_command(cmd, channel, handle));
@@ -366,12 +398,18 @@ impl Handler for NeapHandler {
         session: &mut Session,
     ) -> Result<()> {
         if self.no_shell {
-            info!("Subsystem '{}' denied (no-shell mode) from {}", name, self.peer_addr);
+            info!(
+                "Subsystem '{}' denied (no-shell mode) from {}",
+                name, self.peer_addr
+            );
             session.channel_failure(channel);
             return Ok(());
         }
         if name == "sftp" {
-            info!("SFTP subsystem request on channel {:?} from {}", channel, self.peer_addr);
+            info!(
+                "SFTP subsystem request on channel {:?} from {}",
+                channel, self.peer_addr
+            );
             if let Some(ch) = self.channels.remove(&channel) {
                 session.channel_success(channel);
                 let sftp = crate::sftp::SftpHandler::new();
@@ -383,7 +421,10 @@ impl Handler for NeapHandler {
                 session.channel_failure(channel);
             }
         } else {
-            info!("Unknown subsystem '{}' denied on channel {:?} from {}", name, channel, self.peer_addr);
+            info!(
+                "Unknown subsystem '{}' denied on channel {:?} from {}",
+                name, channel, self.peer_addr
+            );
             session.channel_failure(channel);
         }
         Ok(())

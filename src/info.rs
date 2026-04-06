@@ -6,16 +6,23 @@
 //! prefix followed by UTF-8 bytes.
 
 /// Custom SSH channel type used for exchanging system info.
+#[allow(dead_code)]
 pub const INFO_CHANNEL_TYPE: &str = "rs-info";
 
 /// Rejection message for the info channel (matches Undertow).
+#[allow(dead_code)]
 pub const INFO_REJECTION_MSG: &str = "th4nkz";
 
-/// System information sent over the info channel.
+/// System information sent back to the attacker via SSH channel.
+///
+/// Matches Undertow's `ExtraInfo` struct for protocol compatibility.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtraInfo {
+    /// Username of the current user on the target system.
     pub current_user: String,
+    /// Hostname of the target system.
     pub hostname: String,
+    /// Address the reverse-forwarded port is listening on.
     pub listening_address: String,
 }
 
@@ -78,6 +85,7 @@ impl ExtraInfo {
     /// Deserialize from SSH wire format.
     ///
     /// Returns `None` if the data is truncated or otherwise invalid.
+    #[allow(dead_code)]
     pub fn from_ssh_bytes(data: &[u8]) -> Option<Self> {
         let mut cursor = 0;
         let current_user = read_ssh_string(data, &mut cursor)?;
@@ -101,6 +109,7 @@ fn write_ssh_string(buf: &mut Vec<u8>, s: &str) {
 /// Read a length-prefixed SSH string from `data` at the given cursor position.
 /// Advances the cursor past the string.  Returns `None` on truncation or
 /// invalid UTF-8.
+#[allow(dead_code)]
 fn read_ssh_string(data: &[u8], cursor: &mut usize) -> Option<String> {
     if *cursor + 4 > data.len() {
         return None;

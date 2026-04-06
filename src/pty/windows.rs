@@ -7,9 +7,7 @@ use std::io;
 use std::mem;
 use std::ptr;
 
-use windows_sys::Win32::Foundation::{
-    CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, S_OK,
-};
+use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, S_OK};
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
 use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, ResizePseudoConsole, COORD, HPCON,
@@ -18,8 +16,8 @@ use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
     InitializeProcThreadAttributeList, UpdateProcThreadAttribute, WaitForSingleObject,
-    EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST,
-    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTUPINFOEXW, STARTUPINFOW,
+    EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use crate::pty::WinSize;
@@ -200,23 +198,21 @@ impl ConPtyHandle {
             };
 
             // Shell path as a null-terminated wide string.
-            let cmd_line: Vec<u16> = format!("{}\0", shell_path)
-                .encode_utf16()
-                .collect();
+            let cmd_line: Vec<u16> = format!("{}\0", shell_path).encode_utf16().collect();
             // CreateProcessW requires a mutable command line buffer.
             let mut cmd_line_buf = cmd_line;
 
             let success = CreateProcessW(
-                ptr::null(),                                       // lpApplicationName
-                cmd_line_buf.as_mut_ptr(),                         // lpCommandLine
-                ptr::null(),                                       // lpProcessAttributes
-                ptr::null(),                                       // lpThreadAttributes
-                FALSE,                                             // bInheritHandles
-                EXTENDED_STARTUPINFO_PRESENT,                      // dwCreationFlags
-                ptr::null(),                                       // lpEnvironment
-                ptr::null(),                                       // lpCurrentDirectory
+                ptr::null(),                                                   // lpApplicationName
+                cmd_line_buf.as_mut_ptr(),                                     // lpCommandLine
+                ptr::null(),                  // lpProcessAttributes
+                ptr::null(),                  // lpThreadAttributes
+                FALSE,                        // bInheritHandles
+                EXTENDED_STARTUPINFO_PRESENT, // dwCreationFlags
+                ptr::null(),                  // lpEnvironment
+                ptr::null(),                  // lpCurrentDirectory
                 &startup_info as *const STARTUPINFOEXW as *const STARTUPINFOW, // lpStartupInfo
-                &mut proc_info,                                    // lpProcessInformation
+                &mut proc_info,               // lpProcessInformation
             );
 
             // Clean up the attribute list (we no longer need it).
@@ -302,6 +298,7 @@ impl ConPtyHandle {
     }
 
     /// Block until the spawned process exits, then return its exit code.
+    #[allow(dead_code)]
     pub fn wait(&self) -> io::Result<u32> {
         // SAFETY: self.process is a valid handle created by CreateProcessW in spawn().
         unsafe {

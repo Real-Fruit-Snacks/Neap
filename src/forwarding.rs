@@ -17,11 +17,7 @@ use tokio::net::{TcpListener, TcpStream};
 ///
 /// Connects to `host:port` via TCP and performs bidirectional copy between
 /// the TCP stream and the SSH channel stream.
-pub async fn handle_direct_tcpip(
-    host: String,
-    port: u32,
-    channel: Channel<Msg>,
-) {
+pub async fn handle_direct_tcpip(host: String, port: u32, channel: Channel<Msg>) {
     let target = format!("{}:{}", host, port);
     info!("direct-tcpip: connecting to {}", target);
 
@@ -45,11 +41,7 @@ pub async fn handle_direct_tcpip(
 /// Binds a `TcpListener` on `address:port` and returns the actual bound port.
 /// For each accepted connection, opens a `forwarded-tcpip` channel back to the
 /// client and performs bidirectional copy.
-pub async fn handle_tcpip_forward(
-    address: String,
-    port: u32,
-    handle: Handle,
-) -> Option<u32> {
+pub async fn handle_tcpip_forward(address: String, port: u32, handle: Handle) -> Option<u32> {
     let bind_addr = format!("{}:{}", address, port);
     let listener = match TcpListener::bind(&bind_addr).await {
         Ok(l) => l,
@@ -100,7 +92,10 @@ pub async fn handle_tcpip_forward(
             {
                 Ok(ch) => ch,
                 Err(e) => {
-                    error!("tcpip-forward: failed to open forwarded-tcpip channel: {}", e);
+                    error!(
+                        "tcpip-forward: failed to open forwarded-tcpip channel: {}",
+                        e
+                    );
                     continue;
                 }
             };
