@@ -1,15 +1,17 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use log::info;
+use log::{error, info};
 use russh::keys::key::{KeyPair, PublicKey};
 use russh::server::{Auth, Config, Handler, Msg, Session};
-use russh::{Channel, ChannelId, MethodSet, Pty, SshId};
+use russh::{Channel, ChannelId, CryptoVec, MethodSet, Pty, SshId};
 use subtle::ConstantTimeEq;
 
 use crate::config;
 use crate::error::Result;
+use crate::pty::{PtyInfo, WinSize};
 
 // ---------------------------------------------------------------------------
 // Host key generation
@@ -67,6 +69,11 @@ impl russh::server::Server for NeapServer {
             peer_addr: addr,
             shell: self.shell.clone(),
             no_shell: self.no_shell,
+            pty_info: HashMap::new(),
+            #[cfg(unix)]
+            pty_masters: HashMap::new(),
+            #[cfg(unix)]
+            pty_writers: HashMap::new(),
         }
     }
 }
@@ -79,6 +86,15 @@ pub struct NeapHandler {
     pub peer_addr: String,
     pub shell: String,
     pub no_shell: bool,
+    /// PTY request parameters stored per channel, set by `pty_request` and
+    /// consumed by `shell_request`.
+    pub pty_info: HashMap<ChannelId, PtyInfo>,
+    /// On Unix: master fd ownership kept alive per channel (for ioctl / cleanup).
+    #[cfg(unix)]
+    pub pty_masters: HashMap<ChannelId, std::os::unix::io::OwnedFd>,
+    /// On Unix: writable file handle to the PTY master fd, used by `data()`.
+    #[cfg(unix)]
+    pub pty_writers: HashMap<ChannelId, std::fs::File>,
 }
 
 #[async_trait]
@@ -215,8 +231,57 @@ impl Handler for NeapHandler {
             return Ok(());
         }
         info!("Shell request on channel {:?} from {}", channel, self.peer_addr);
-        session.channel_success(channel);
-        // TODO: Task 7 — spawn PTY shell
+
+        // Check if a PTY was requested for this channel.
+        let pty = self.pty_info.get(&channel).cloned();
+
+        if pty.is_none() {
+            // No PTY info — this is a port-forward-only session or a
+            // non-interactive request.  Acknowledge and keep the session open.
+            session.channel_success(channel);
+            return Ok(());
+        }
+
+        #[cfg(unix)]
+        {
+            let pty = pty.unwrap();
+            match crate::pty::unix::spawn_shell(&self.shell, &pty.term, &pty.win_size) {
+                Ok(master_fd) => {
+                    session.channel_success(channel);
+
+                    // Dup the master fd for the writer (data callback writes here).
+                    use std::os::unix::io::{AsRawFd, FromRawFd};
+                    let writer_fd = nix::unistd::dup(master_fd.as_raw_fd())
+                        .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+                    let writer_file = unsafe { std::fs::File::from_raw_fd(writer_fd) };
+                    self.pty_writers.insert(channel, writer_file);
+
+                    // Dup the master fd again for the async reader task.
+                    let reader_fd = nix::unistd::dup(master_fd.as_raw_fd())
+                        .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+
+                    // Store the original master fd for ioctl (window resize).
+                    self.pty_masters.insert(channel, master_fd);
+
+                    // Spawn an async reader task: reads from PTY master and
+                    // sends output to the SSH channel.
+                    let handle = session.handle();
+                    tokio::spawn(pty_read_loop(reader_fd, channel, handle));
+                }
+                Err(e) => {
+                    error!("Failed to spawn PTY shell: {}", e);
+                    session.channel_failure(channel);
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            // TODO: Task 8 — Windows ConPTY implementation
+            let _pty = pty;
+            session.channel_success(channel);
+        }
+
         Ok(())
     }
 
@@ -276,8 +341,22 @@ impl Handler for NeapHandler {
             "PTY request on channel {:?}: term={} cols={} rows={} px={}x{} from {}",
             channel, term, col_width, row_height, pix_width, pix_height, self.peer_addr
         );
+
+        // Store PTY parameters for use when shell_request arrives.
+        self.pty_info.insert(
+            channel,
+            PtyInfo {
+                term: term.to_string(),
+                win_size: WinSize {
+                    cols: col_width as u16,
+                    rows: row_height as u16,
+                    pix_width: pix_width as u16,
+                    pix_height: pix_height as u16,
+                },
+            },
+        );
+
         session.channel_success(channel);
-        // TODO: Task 7 — store PTY parameters for shell spawn
         Ok(())
     }
 
@@ -294,18 +373,119 @@ impl Handler for NeapHandler {
             "Window change on channel {:?}: cols={} rows={} px={}x{} from {}",
             channel, col_width, row_height, pix_width, pix_height, self.peer_addr
         );
-        // TODO: Task 7 — resize PTY
+
+        let win_size = WinSize {
+            cols: col_width as u16,
+            rows: row_height as u16,
+            pix_width: pix_width as u16,
+            pix_height: pix_height as u16,
+        };
+
+        // Update the stored PTY info.
+        if let Some(info) = self.pty_info.get_mut(&channel) {
+            info.win_size = win_size;
+        }
+
+        // On Unix: apply the new window size to the PTY master fd.
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            if let Some(master) = self.pty_masters.get(&channel) {
+                if let Err(e) = crate::pty::unix::set_win_size(master.as_raw_fd(), &win_size) {
+                    error!("Failed to set window size on channel {:?}: {}", channel, e);
+                }
+            }
+        }
+
         Ok(())
     }
 
     async fn data(
         &mut self,
         channel: ChannelId,
-        _data: &[u8],
+        data: &[u8],
         _session: &mut Session,
     ) -> Result<()> {
-        // TODO: Task 7 — write data to PTY stdin
-        let _ = channel;
+        // If this channel has a PTY writer, forward the data to the PTY.
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            if let Some(writer) = self.pty_writers.get_mut(&channel) {
+                if let Err(e) = writer.write_all(data) {
+                    error!("Failed to write to PTY on channel {:?}: {}", channel, e);
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = (channel, data);
+        }
+
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// PTY reader task (Unix only)
+// ---------------------------------------------------------------------------
+
+/// Bridge PTY master output to an SSH channel.
+///
+/// A dedicated blocking thread reads from the PTY master fd continuously and
+/// sends chunks over a `tokio::sync::mpsc` channel.  This async function
+/// receives those chunks and forwards them to the SSH channel via
+/// `handle.data()`.  When the PTY returns EOF or an error the SSH channel is
+/// closed.
+#[cfg(unix)]
+async fn pty_read_loop(
+    reader_fd: std::os::unix::io::RawFd,
+    channel: ChannelId,
+    handle: russh::server::Handle,
+) {
+    use std::os::unix::io::FromRawFd;
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+
+    // Spawn a blocking thread that owns the reader File.
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        // SAFETY: reader_fd is a valid dup'd fd passed from shell_request.
+        let mut reader = unsafe { std::fs::File::from_raw_fd(reader_fd) };
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break, // EOF
+                Ok(n) => {
+                    if tx.blocking_send(buf[..n].to_vec()).is_err() {
+                        // Receiver dropped — SSH channel already closed.
+                        break;
+                    }
+                }
+                Err(e) => {
+                    // EIO is normal on Linux when the child process exits.
+                    if e.raw_os_error() != Some(libc::EIO) {
+                        error!("PTY read error: {}", e);
+                    }
+                    break;
+                }
+            }
+        }
+        // `reader` is dropped here, closing the dup'd fd.
+    });
+
+    // Async loop: receive data from the blocking reader and forward to SSH.
+    while let Some(data) = rx.recv().await {
+        if handle
+            .data(channel, CryptoVec::from_slice(&data))
+            .await
+            .is_err()
+        {
+            break;
+        }
+    }
+
+    // PTY output finished — close the SSH channel.
+    let _ = handle.eof(channel).await;
+    let _ = handle.close(channel).await;
 }
