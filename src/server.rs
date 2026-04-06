@@ -70,10 +70,13 @@ impl russh::server::Server for NeapServer {
             shell: self.shell.clone(),
             no_shell: self.no_shell,
             pty_info: HashMap::new(),
+            channels: HashMap::new(),
             #[cfg(unix)]
             pty_masters: HashMap::new(),
             #[cfg(unix)]
             pty_writers: HashMap::new(),
+            #[cfg(windows)]
+            conpty_handles: HashMap::new(),
         }
     }
 }
@@ -89,12 +92,17 @@ pub struct NeapHandler {
     /// PTY request parameters stored per channel, set by `pty_request` and
     /// consumed by `shell_request`.
     pub pty_info: HashMap<ChannelId, PtyInfo>,
+    /// SSH channels stored on open, consumed by subsystem_request (e.g. SFTP).
+    pub channels: HashMap<ChannelId, Channel<Msg>>,
     /// On Unix: master fd ownership kept alive per channel (for ioctl / cleanup).
     #[cfg(unix)]
     pub pty_masters: HashMap<ChannelId, std::os::unix::io::OwnedFd>,
     /// On Unix: writable file handle to the PTY master fd, used by `data()`.
     #[cfg(unix)]
     pub pty_writers: HashMap<ChannelId, std::fs::File>,
+    /// On Windows: ConPTY handles per channel.
+    #[cfg(windows)]
+    pub conpty_handles: HashMap<ChannelId, Arc<crate::pty::windows::ConPtyHandle>>,
 }
 
 #[async_trait]
@@ -173,6 +181,8 @@ impl Handler for NeapHandler {
         _session: &mut Session,
     ) -> Result<bool> {
         info!("Session channel opened (id {:?}) from {}", channel.id(), self.peer_addr);
+        // Store the channel so subsystem_request (SFTP) can consume it later.
+        self.channels.insert(channel.id(), channel);
         Ok(true)
     }
 
@@ -277,9 +287,42 @@ impl Handler for NeapHandler {
 
         #[cfg(windows)]
         {
-            // TODO: Task 8 — Windows ConPTY implementation
-            let _pty = pty;
-            session.channel_success(channel);
+            use crate::pty::windows::{supports_conpty, ConPtyHandle, deny_pty_legacy};
+
+            let pty = pty.unwrap();
+
+            if !supports_conpty() {
+                // Legacy Windows — no ConPTY support.
+                let msg = deny_pty_legacy();
+                session.channel_success(channel);
+                let handle = session.handle();
+                tokio::spawn(async move {
+                    let _ = handle.data(channel, CryptoVec::from_slice(msg.as_bytes())).await;
+                    let _ = handle.data(channel, CryptoVec::from_slice(b"\r\n")).await;
+                    let _ = handle.exit_status_request(channel, 255).await;
+                    let _ = handle.eof(channel).await;
+                    let _ = handle.close(channel).await;
+                });
+                return Ok(());
+            }
+
+            match ConPtyHandle::spawn(&pty.win_size) {
+                Ok(conpty) => {
+                    session.channel_success(channel);
+
+                    let conpty = Arc::new(conpty);
+                    self.conpty_handles.insert(channel, Arc::clone(&conpty));
+
+                    // Spawn an async reader task: blocking read in a thread,
+                    // forward to SSH channel via mpsc.
+                    let handle = session.handle();
+                    tokio::spawn(conpty_read_loop(conpty, channel, handle));
+                }
+                Err(e) => {
+                    error!("Failed to spawn ConPTY shell: {}", e);
+                    session.channel_failure(channel);
+                }
+            }
         }
 
         Ok(())
@@ -317,8 +360,16 @@ impl Handler for NeapHandler {
         }
         if name == "sftp" {
             info!("SFTP subsystem request on channel {:?} from {}", channel, self.peer_addr);
-            session.channel_success(channel);
-            // TODO: Task 9 — start SFTP handler
+            if let Some(ch) = self.channels.remove(&channel) {
+                session.channel_success(channel);
+                let sftp = crate::sftp::SftpHandler::new();
+                tokio::spawn(async move {
+                    russh_sftp::server::run(ch.into_stream(), sftp).await;
+                });
+            } else {
+                error!("SFTP: no stored channel for {:?}", channel);
+                session.channel_failure(channel);
+            }
         } else {
             info!("Unknown subsystem '{}' denied on channel {:?} from {}", name, channel, self.peer_addr);
             session.channel_failure(channel);
@@ -397,6 +448,16 @@ impl Handler for NeapHandler {
             }
         }
 
+        // On Windows: resize the ConPTY pseudo-console.
+        #[cfg(windows)]
+        {
+            if let Some(conpty) = self.conpty_handles.get(&channel) {
+                if let Err(e) = conpty.resize(&win_size) {
+                    error!("Failed to resize ConPTY on channel {:?}: {}", channel, e);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -417,9 +478,13 @@ impl Handler for NeapHandler {
             }
         }
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
         {
-            let _ = (channel, data);
+            if let Some(conpty) = self.conpty_handles.get(&channel) {
+                if let Err(e) = conpty.write(data) {
+                    error!("Failed to write to ConPTY on channel {:?}: {}", channel, e);
+                }
+            }
         }
 
         Ok(())
@@ -486,6 +551,62 @@ async fn pty_read_loop(
     }
 
     // PTY output finished — close the SSH channel.
+    let _ = handle.eof(channel).await;
+    let _ = handle.close(channel).await;
+}
+
+// ---------------------------------------------------------------------------
+// ConPTY reader task (Windows only)
+// ---------------------------------------------------------------------------
+
+/// Bridge ConPTY output to an SSH channel.
+///
+/// Same pattern as the Unix `pty_read_loop`: a blocking thread reads from the
+/// ConPTY output pipe and sends chunks through an mpsc channel.  The async
+/// half forwards them to the SSH channel.
+#[cfg(windows)]
+async fn conpty_read_loop(
+    conpty: Arc<crate::pty::windows::ConPtyHandle>,
+    channel: ChannelId,
+    handle: russh::server::Handle,
+) {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+
+    // Spawn a blocking thread for the synchronous ConPTY reads.
+    tokio::task::spawn_blocking(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match conpty.read(&mut buf) {
+                Ok(0) => break, // EOF / pipe closed
+                Ok(n) => {
+                    if tx.blocking_send(buf[..n].to_vec()).is_err() {
+                        // Receiver dropped — SSH channel already closed.
+                        break;
+                    }
+                }
+                Err(e) => {
+                    // ERROR_BROKEN_PIPE is normal when the process exits.
+                    if e.raw_os_error() != Some(109) {
+                        error!("ConPTY read error: {}", e);
+                    }
+                    break;
+                }
+            }
+        }
+    });
+
+    // Async loop: receive data from the blocking reader and forward to SSH.
+    while let Some(data) = rx.recv().await {
+        if handle
+            .data(channel, CryptoVec::from_slice(&data))
+            .await
+            .is_err()
+        {
+            break;
+        }
+    }
+
+    // ConPTY output finished — close the SSH channel.
     let _ = handle.eof(channel).await;
     let _ = handle.close(channel).await;
 }
