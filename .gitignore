@@ -1,4 +1,21 @@
+# Build artifacts
 /target
 /bin
-*.exe
-*.pdb
+
+# Generated handler scripts (contain plaintext passwords)
+/handlers
+
+# AI/development tooling artifacts
+/.omc
+/docs/superpowers
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
