@@ -1,6 +1,7 @@
 mod config;
 mod error;
 mod server;
+mod transport;
 
 use error::NeapError;
 use error::Result;
@@ -153,5 +154,8 @@ async fn main() {
         log::info!("TLS: disabled");
     }
 
-    // TODO: transport::run(params).await
+    if let Err(e) = transport::run(&params).await {
+        eprintln!("neap: {}", e);
+        std::process::exit(1);
+    }
 }
