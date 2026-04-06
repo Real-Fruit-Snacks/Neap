@@ -39,6 +39,7 @@ DRY_RUN=false
 COMPRESS=false
 OUTPUT_DIR="bin"
 HANDLER_DIR="handlers"
+TARGET=""
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
 usage() {
@@ -63,6 +64,7 @@ ${TEAL}Options:${RESET}
     ${YELLOW}--pubkey <key>${RESET}      Authorized public key (base64)
     ${YELLOW}--nocli${RESET}             Disable CLI argument parsing in binary
     ${YELLOW}--bind-port <port>${RESET}  Additional bind port after reverse connect
+    ${YELLOW}--target <triple>${RESET}   Cross-compile for specified target (e.g., x86_64-unknown-linux-musl)
     ${YELLOW}--compress${RESET}          Compress with UPX after building
     ${YELLOW}--dry-run${RESET}           Show configuration without building
     ${YELLOW}--help${RESET}              Show this help message
@@ -183,6 +185,9 @@ build() {
     if [ -n "$NOCLI" ]; then
         echo -e "${MAUVE}│${RESET}  ${TEXT}CLI:${RESET}       ${YELLOW}disabled${RESET}"
     fi
+    if [ -n "$TARGET" ]; then
+        echo -e "${MAUVE}│${RESET}  ${TEXT}Target:${RESET}    ${PEACH}$TARGET${RESET}"
+    fi
     if $COMPRESS; then
         echo -e "${MAUVE}│${RESET}  ${TEXT}Compress:${RESET}  ${GREEN}UPX${RESET}"
     fi
@@ -219,8 +224,12 @@ build() {
     fi
 
     # ── Build ──
-    info "Running cargo build --release $cargo_features ..."
-    cargo build --release $cargo_features
+    local cargo_target_flag=""
+    if [ -n "$TARGET" ]; then
+        cargo_target_flag="--target $TARGET"
+    fi
+    info "Running cargo build --release $cargo_features $cargo_target_flag ..."
+    cargo build --release $cargo_features $cargo_target_flag
 
     # ── Copy binary ──
     mkdir -p "$OUTPUT_DIR"
@@ -231,16 +240,22 @@ build() {
         safe_name="neap_listen_$(sanitize_for_filename "$PORT")"
     fi
 
+    # Determine the release directory based on --target
+    local release_dir="target/release"
+    if [ -n "$TARGET" ]; then
+        release_dir="target/$TARGET/release"
+    fi
+
     # Try both Unix and Windows binary names
-    if [ -f "target/release/neap" ]; then
-        cp "target/release/neap" "$OUTPUT_DIR/$safe_name"
+    if [ -f "$release_dir/neap" ]; then
+        cp "$release_dir/neap" "$OUTPUT_DIR/$safe_name"
         success "Binary: $OUTPUT_DIR/$safe_name"
-    elif [ -f "target/release/neap.exe" ]; then
-        cp "target/release/neap.exe" "$OUTPUT_DIR/${safe_name}.exe"
+    elif [ -f "$release_dir/neap.exe" ]; then
+        cp "$release_dir/neap.exe" "$OUTPUT_DIR/${safe_name}.exe"
         safe_name="${safe_name}.exe"
         success "Binary: $OUTPUT_DIR/$safe_name"
     else
-        die "Build succeeded but binary not found in target/release/"
+        die "Build succeeded but binary not found in $release_dir/"
     fi
 
     # ── UPX Compression ──
@@ -381,6 +396,10 @@ main() {
                 shift
                 BPORT="${1:?--bind-port requires a value}"
                 validate_port "$BPORT" "bind-port"
+                ;;
+            --target)
+                shift
+                TARGET="${1:?--target requires a value}"
                 ;;
             --compress)
                 COMPRESS=true
