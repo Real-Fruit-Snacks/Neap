@@ -1,5 +1,6 @@
 mod config;
 mod error;
+mod server;
 
 use error::NeapError;
 use error::Result;
