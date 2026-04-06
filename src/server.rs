@@ -231,10 +231,11 @@ impl Handler for NeapHandler {
             session.channel_failure(channel);
             return Ok(());
         }
-        let cmd = String::from_utf8_lossy(data);
+        let cmd = String::from_utf8_lossy(data).to_string();
         info!("Exec request on channel {:?}: '{}' from {}", channel, cmd, self.peer_addr);
         session.channel_success(channel);
-        // TODO: Task 5 — execute command
+        let handle = session.handle();
+        tokio::spawn(crate::session::exec_command(cmd, channel, handle));
         Ok(())
     }
 

@@ -2,6 +2,7 @@ mod config;
 mod error;
 mod pty;
 mod server;
+mod session;
 mod transport;
 
 use error::NeapError;
