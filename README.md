@@ -16,7 +16,7 @@ Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow).
 - TLS wrapping with SNI spoofing
 - Password + public key authentication
 - Build-time configuration
-- Single static binary under 2MB
+- Single static binary
 
 ## Build
 
