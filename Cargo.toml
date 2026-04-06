@@ -4,6 +4,13 @@ version = "1.0.0"
 edition = "2021"
 license = "GPL-3.0"
 description = "Statically-linked SSH server for penetration testing"
+authors = ["Real-Fruit-Snacks"]
+repository = "https://github.com/Real-Fruit-Snacks/Neap"
+homepage = "https://github.com/Real-Fruit-Snacks/Neap"
+readme = "README.md"
+keywords = ["ssh", "penetration-testing", "reverse-shell", "security"]
+categories = ["command-line-utilities", "network-programming"]
+rust-version = "1.75"
 
 [features]
 default = ["cli"]
