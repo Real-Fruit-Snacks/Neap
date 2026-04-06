@@ -7,6 +7,16 @@
 3. Run `cargo build` to verify your setup
 4. Run `cargo test` to verify tests pass
 
+## Pre-commit Hook
+
+Install the pre-commit hook to automatically check formatting and linting before
+each commit:
+
+```bash
+cp scripts/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
 ## Code Style
 
 - Run `cargo fmt` before committing
