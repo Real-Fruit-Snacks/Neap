@@ -92,12 +92,16 @@ impl Handler for NeapHandler {
         let provided = password.as_bytes();
 
         // Constant-time comparison to prevent timing attacks.
-        // Pad/truncate to equal lengths for ct_eq (which requires equal-length slices).
-        let ok = if expected.len() == provided.len() {
-            expected.ct_eq(provided).into()
-        } else {
-            false
-        };
+        // Always compare equal-length buffers so the length difference
+        // cannot be observed via timing.
+        let padded_len = std::cmp::max(expected.len(), provided.len());
+        let mut a = vec![0u8; padded_len];
+        let mut b = vec![0u8; padded_len];
+        a[..expected.len()].copy_from_slice(expected);
+        b[..provided.len()].copy_from_slice(provided);
+        let bytes_match: bool = a.ct_eq(&b).into();
+        let len_match = expected.len() == provided.len();
+        let ok = bytes_match && len_match;
 
         if ok {
             info!("Password auth succeeded for user '{}' from {}", user, self.peer_addr);
