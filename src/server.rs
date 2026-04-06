@@ -211,7 +211,9 @@ impl Handler for NeapHandler {
             originator_port,
             self.peer_addr
         );
-        // TODO: Task 10 — implement local port forwarding
+        let host = host_to_connect.to_string();
+        let port = port_to_connect;
+        tokio::spawn(crate::forwarding::handle_direct_tcpip(host, port, channel));
         Ok(true)
     }
 
@@ -221,11 +223,19 @@ impl Handler for NeapHandler {
         &mut self,
         address: &str,
         port: &mut u32,
-        _session: &mut Session,
+        session: &mut Session,
     ) -> Result<bool> {
         info!("TCP/IP forward request: {}:{} from {}", address, port, self.peer_addr);
-        // TODO: Task 10 — implement remote port forwarding
-        Ok(true)
+        let handle = session.handle();
+        let addr = address.to_string();
+        let requested_port = *port;
+        match crate::forwarding::handle_tcpip_forward(addr, requested_port, handle).await {
+            Some(actual_port) => {
+                *port = actual_port;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     // -- Session channel requests ------------------------------------------
@@ -245,16 +255,18 @@ impl Handler for NeapHandler {
         // Check if a PTY was requested for this channel.
         let pty = self.pty_info.get(&channel).cloned();
 
-        if pty.is_none() {
-            // No PTY info — this is a port-forward-only session or a
-            // non-interactive request.  Acknowledge and keep the session open.
-            session.channel_success(channel);
-            return Ok(());
-        }
+        let pty = match pty {
+            Some(p) => p,
+            None => {
+                // No PTY info — this is a port-forward-only session or a
+                // non-interactive request.  Acknowledge and keep the session open.
+                session.channel_success(channel);
+                return Ok(());
+            }
+        };
 
         #[cfg(unix)]
         {
-            let pty = pty.unwrap();
             match crate::pty::unix::spawn_shell(&self.shell, &pty.term, &pty.win_size) {
                 Ok(master_fd) => {
                     session.channel_success(channel);
@@ -263,6 +275,8 @@ impl Handler for NeapHandler {
                     use std::os::unix::io::{AsRawFd, FromRawFd};
                     let writer_fd = nix::unistd::dup(master_fd.as_raw_fd())
                         .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+                    // SAFETY: writer_fd is a valid fd just returned by dup().
+                    // Ownership is transferred to the File — no other code uses this fd.
                     let writer_file = unsafe { std::fs::File::from_raw_fd(writer_fd) };
                     self.pty_writers.insert(channel, writer_file);
 
@@ -289,8 +303,6 @@ impl Handler for NeapHandler {
         {
             use crate::pty::windows::{supports_conpty, ConPtyHandle, deny_pty_legacy};
 
-            let pty = pty.unwrap();
-
             if !supports_conpty() {
                 // Legacy Windows — no ConPTY support.
                 let msg = deny_pty_legacy();
@@ -306,7 +318,7 @@ impl Handler for NeapHandler {
                 return Ok(());
             }
 
-            match ConPtyHandle::spawn(&pty.win_size) {
+            match ConPtyHandle::spawn(&self.shell, &pty.win_size) {
                 Ok(conpty) => {
                     session.channel_success(channel);
 

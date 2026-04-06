@@ -25,6 +25,8 @@ pub fn set_win_size(fd: RawFd, win_size: &WinSize) -> std::io::Result<()> {
         ws_xpixel: win_size.pix_width,
         ws_ypixel: win_size.pix_height,
     };
+    // SAFETY: TIOCSWINSZ is a valid ioctl for terminal fds.
+    // The winsize struct is properly initialized and passed by reference.
     let ret = unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &ws) };
     if ret < 0 {
         return Err(std::io::Error::last_os_error());
@@ -61,6 +63,9 @@ pub fn spawn_shell(
     set_win_size(master.as_raw_fd(), win_size)?;
 
     // Fork the process.
+    // SAFETY: fork() is called before any multi-threaded tokio runtime
+    // operations on the child side. The child immediately calls setsid,
+    // dup2, and execvp without touching shared state.
     let fork_result = unsafe { fork() }
         .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
 
@@ -79,6 +84,8 @@ pub fn spawn_shell(
 
             // Set the slave as the controlling terminal (TIOCSCTTY).
             // The second argument 0 means "don't steal if already owned".
+            // SAFETY: TIOCSCTTY is a valid ioctl for terminal fds after setsid().
+            // The slave fd is a valid PTY slave obtained from openpty().
             unsafe {
                 libc::ioctl(slave.as_raw_fd(), libc::TIOCSCTTY, 0);
             }
@@ -100,6 +107,10 @@ pub fn spawn_shell(
             // Note: std::env::set_var is not async-signal-safe, but these
             // libc calls are (putenv/setenv are specified as AS-safe on most
             // platforms, and we exec immediately after).
+            // SAFETY: All CString values are constructed from known-safe
+            // literals via unwrap_unchecked (no NUL bytes possible).
+            // setenv and getpwuid are AS-safe on POSIX. The pw_dir pointer
+            // is valid for the lifetime of this call (no intervening getpw*).
             unsafe {
                 let term_key = CString::new("TERM").unwrap_unchecked();
                 let term_val = CString::new(term).unwrap_unchecked();
@@ -118,17 +129,19 @@ pub fn spawn_shell(
             // returns, something went wrong.
             let shell_c = CString::new(shell).unwrap_or_else(|_| {
                 // If the shell path contains a nul byte, fall back.
-                CString::new("/bin/sh").unwrap()
+                CString::new("/bin/sh").expect("shell path contains no NUL bytes")
             });
             // argv[0] is typically just the shell name (e.g. "-bash" for login
             // shell or "bash").  We use a login-shell convention by prefixing
             // with '-'.
             let argv0 = CString::new(format!("-{}", shell.rsplit('/').next().unwrap_or(shell)))
-                .unwrap_or_else(|_| CString::new("-sh").unwrap());
+                .unwrap_or_else(|_| CString::new("-sh").expect("fallback shell name contains no NUL bytes"));
             let argv = [argv0.clone()];
             let _ = execvp(&shell_c, &argv);
 
             // execvp failed — exit immediately.
+            // SAFETY: _exit is async-signal-safe and terminates the child
+            // process without running destructors or atexit handlers.
             unsafe { libc::_exit(127) };
         }
         ForkResult::Parent { child: _child } => {

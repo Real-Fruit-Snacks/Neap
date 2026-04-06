@@ -1,8 +1,11 @@
 mod config;
 mod error;
+mod forwarding;
+mod info;
 mod pty;
 mod server;
 mod session;
+mod sftp;
 mod transport;
 
 use error::NeapError;
