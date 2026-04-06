@@ -10,6 +10,9 @@ build: clean current
 	cross build --release --target i686-unknown-linux-musl && cp target/i686-unknown-linux-musl/release/neap bin/neapx86 || true
 	cross build --release --target x86_64-pc-windows-gnu && cp target/x86_64-pc-windows-gnu/release/neap.exe bin/neapx64.exe || true
 	cross build --release --target i686-pc-windows-gnu && cp target/i686-pc-windows-gnu/release/neap.exe bin/neapx86.exe || true
+	cross build --release --target aarch64-unknown-linux-musl && cp target/aarch64-unknown-linux-musl/release/neap bin/neap-linux-arm64 || true
+	cross build --release --target aarch64-apple-darwin && cp target/aarch64-apple-darwin/release/neap bin/neap-macos-arm64 || true
+	cross build --release --target x86_64-apple-darwin && cp target/x86_64-apple-darwin/release/neap bin/neap-macos-x64 || true
 
 clean:
 	rm -f bin/neap*
