@@ -20,3 +20,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform support (Linux x86/x64, Windows x86/x64)
 - Build script with handler generation and engagement checklist
 - Graceful shutdown on SIGTERM/SIGINT/Ctrl+C
+- Automatic process daemonization (Unix double-fork, Windows detached respawn)
+- In-memory SFTP mode (`--memfs` / `NEAP_MEMFS`) — files stored in RAM only
