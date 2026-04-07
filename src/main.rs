@@ -1,4 +1,5 @@
 mod config;
+mod daemon;
 mod error;
 mod forwarding;
 mod info;
@@ -118,12 +119,17 @@ fn parse_params() -> Result<Params> {
     })
 }
 
+fn main() {
+    daemon::daemonize();
+    tokio_main();
+}
+
 #[tokio::main]
-async fn main() {
+async fn tokio_main() {
     let params = match parse_params() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("neap: {}", e);
+            log::error!("neap: {}", e);
             std::process::exit(1);
         }
     };
@@ -159,7 +165,7 @@ async fn main() {
     }
 
     if let Err(e) = transport::run(&params).await {
-        eprintln!("neap: {}", e);
+        log::error!("neap: {}", e);
         std::process::exit(1);
     }
 }
