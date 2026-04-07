@@ -20,6 +20,7 @@ pub struct MemMetadata {
     /// Last-modified timestamp.
     pub modified: SystemTime,
     /// Whether this entry is a directory.
+    #[allow(dead_code)]
     pub is_dir: bool,
 }
 
@@ -179,6 +180,7 @@ impl MemFs {
     }
 
     /// Read the full contents of a file.
+    #[allow(dead_code)]
     pub fn read_file<P: AsRef<Path>>(&self, path: P) -> io::Result<Vec<u8>> {
         let path = self.normalize(path);
         self.files
