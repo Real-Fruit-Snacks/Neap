@@ -1,6 +1,7 @@
 mod config;
 mod daemon;
 mod error;
+mod exec;
 mod forwarding;
 mod info;
 mod memfs;

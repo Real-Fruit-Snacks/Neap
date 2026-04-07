@@ -12,6 +12,7 @@ use russh_sftp::protocol::{
     Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Packet, Status, StatusCode, Version,
 };
 
+use crate::exec;
 use crate::memfs::{MemMetadata, SharedMemFs};
 
 /// State for a single in-memory SFTP session.
@@ -24,6 +25,8 @@ pub struct MemSftpHandler {
     file_handles: HashMap<String, (PathBuf, u64)>,
     /// Open directory handles: handle-string -> (path, already-read flag).
     dir_handles: HashMap<String, (PathBuf, bool)>,
+    /// Handles for `/exec/` command output: handle-string -> output bytes.
+    exec_handles: HashMap<String, Vec<u8>>,
     /// Shared reference to the in-memory filesystem.
     memfs: SharedMemFs,
 }
@@ -36,6 +39,7 @@ impl MemSftpHandler {
             next_handle: 0,
             file_handles: HashMap::new(),
             dir_handles: HashMap::new(),
+            exec_handles: HashMap::new(),
             memfs,
         }
     }
@@ -119,6 +123,15 @@ impl russh_sftp::server::Handler for MemSftpHandler {
     ) -> Result<Handle, Self::Error> {
         info!("MemSFTP open: {} flags={:?}", filename, pflags);
 
+        // Intercept /exec/<cmd> paths.
+        if let Some(cmd) = exec::extract_command(&filename) {
+            info!("MemSFTP exec open: running {:?}", cmd);
+            let output = exec::run_command(cmd);
+            let handle = self.alloc_handle();
+            self.exec_handles.insert(handle.clone(), output);
+            return Ok(Handle { id, handle });
+        }
+
         // If CREATE flag is set and the file doesn't exist, create it.
         if pflags.contains(OpenFlags::CREATE) {
             let mut fs = self.memfs.write().map_err(|_| {
@@ -172,6 +185,7 @@ impl russh_sftp::server::Handler for MemSftpHandler {
         info!("MemSFTP close: {}", handle);
         self.file_handles.remove(&handle);
         self.dir_handles.remove(&handle);
+        self.exec_handles.remove(&handle);
         Ok(Status {
             id,
             status_code: StatusCode::Ok,
@@ -189,6 +203,19 @@ impl russh_sftp::server::Handler for MemSftpHandler {
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
+        // Serve reads from exec output if this is an exec handle.
+        if let Some(output) = self.exec_handles.get(&handle) {
+            let start = offset as usize;
+            if start >= output.len() {
+                return Err(StatusCode::Eof);
+            }
+            let end = std::cmp::min(start + len as usize, output.len());
+            return Ok(Data {
+                id,
+                data: output[start..end].to_vec(),
+            });
+        }
+
         let (path, _) = self.file_handles.get(&handle).ok_or(StatusCode::Failure)?;
         let path = path.clone();
 
@@ -249,6 +276,17 @@ impl russh_sftp::server::Handler for MemSftpHandler {
 
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         info!("MemSFTP stat: {}", path);
+
+        if exec::is_exec_path(&path) {
+            let attrs = if let Some(cmd) = exec::extract_command(&path) {
+                let output = exec::run_command(cmd);
+                exec::exec_file_attrs(output.len() as u64)
+            } else {
+                exec::exec_dir_attrs()
+            };
+            return Ok(Attrs { id, attrs });
+        }
+
         let fs = self.memfs.read().map_err(|_| StatusCode::Failure)?;
         let meta = fs.stat(&path).map_err(|e| io_to_status(&e))?;
         Ok(Attrs {
@@ -259,6 +297,17 @@ impl russh_sftp::server::Handler for MemSftpHandler {
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         info!("MemSFTP lstat: {}", path);
+
+        if exec::is_exec_path(&path) {
+            let attrs = if let Some(cmd) = exec::extract_command(&path) {
+                let output = exec::run_command(cmd);
+                exec::exec_file_attrs(output.len() as u64)
+            } else {
+                exec::exec_dir_attrs()
+            };
+            return Ok(Attrs { id, attrs });
+        }
+
         // No symlinks in MemFs, so lstat == stat.
         let fs = self.memfs.read().map_err(|_| StatusCode::Failure)?;
         let meta = fs.stat(&path).map_err(|e| io_to_status(&e))?;
@@ -325,6 +374,15 @@ impl russh_sftp::server::Handler for MemSftpHandler {
 
     async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
         info!("MemSFTP opendir: {}", path);
+
+        // /exec/ is a virtual directory — no filesystem check needed.
+        if exec::is_exec_path(&path) && exec::extract_command(&path).is_none() {
+            let handle = self.alloc_handle();
+            self.dir_handles
+                .insert(handle.clone(), (PathBuf::from("/exec/"), false));
+            return Ok(Handle { id, handle });
+        }
+
         let fs = self.memfs.read().map_err(|_| {
             error!("MemSFTP opendir: lock poisoned");
             StatusCode::Failure
@@ -353,6 +411,16 @@ impl russh_sftp::server::Handler for MemSftpHandler {
 
         *read_done = true;
         let dir_path = path.clone();
+
+        // Virtual /exec/ directory — return only . and .. entries.
+        if dir_path.as_os_str() == "/exec/" {
+            let dir_attrs = exec::exec_dir_attrs();
+            let files = vec![
+                File::new(".", dir_attrs.clone()),
+                File::new("..", dir_attrs),
+            ];
+            return Ok(Name { id, files });
+        }
 
         let fs = self.memfs.read().map_err(|_| {
             error!("MemSFTP readdir: lock poisoned");
@@ -467,6 +535,20 @@ impl russh_sftp::server::Handler for MemSftpHandler {
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         info!("MemSFTP realpath: {}", path);
+
+        // Virtual /exec/ paths resolve to themselves.
+        if exec::is_exec_path(&path) {
+            let resolved = if exec::extract_command(&path).is_some() {
+                path
+            } else {
+                "/exec/".to_string()
+            };
+            return Ok(Name {
+                id,
+                files: vec![File::dummy(resolved)],
+            });
+        }
+
         let fs = self.memfs.read().map_err(|_| StatusCode::Failure)?;
         let normalized = fs.normalize(&path);
         let canon_str = normalized.to_string_lossy().to_string();

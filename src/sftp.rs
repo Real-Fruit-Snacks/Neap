@@ -13,6 +13,8 @@ use russh_sftp::protocol::{
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
+use crate::exec;
+
 /// State for a single SFTP session.
 pub struct SftpHandler {
     /// Protocol version negotiated with the client.
@@ -25,6 +27,8 @@ pub struct SftpHandler {
     /// The bool tracks whether we have already sent the listing (readdir
     /// must return Eof on the second call).
     dir_handles: HashMap<String, (PathBuf, bool)>,
+    /// Handles for `/exec/` command output: handle-string -> output bytes.
+    exec_handles: HashMap<String, Vec<u8>>,
 }
 
 impl SftpHandler {
@@ -34,6 +38,7 @@ impl SftpHandler {
             next_handle: 0,
             file_handles: HashMap::new(),
             dir_handles: HashMap::new(),
+            exec_handles: HashMap::new(),
         }
     }
 
@@ -110,6 +115,15 @@ impl russh_sftp::server::Handler for SftpHandler {
     ) -> Result<Handle, Self::Error> {
         info!("SFTP open: {} flags={:?}", filename, pflags);
 
+        // Intercept /exec/<cmd> paths.
+        if let Some(cmd) = exec::extract_command(&filename) {
+            info!("SFTP exec open: running {:?}", cmd);
+            let output = exec::run_command(cmd);
+            let handle = self.alloc_handle();
+            self.exec_handles.insert(handle.clone(), output);
+            return Ok(Handle { id, handle });
+        }
+
         let opts: std::fs::OpenOptions = pflags.into();
         let file = tokio::fs::OpenOptions::from(opts)
             .open(&filename)
@@ -129,6 +143,7 @@ impl russh_sftp::server::Handler for SftpHandler {
         // Remove from whichever map it lives in.
         self.file_handles.remove(&handle);
         self.dir_handles.remove(&handle);
+        self.exec_handles.remove(&handle);
         Ok(Status {
             id,
             status_code: StatusCode::Ok,
@@ -146,6 +161,19 @@ impl russh_sftp::server::Handler for SftpHandler {
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
+        // Serve reads from exec output if this is an exec handle.
+        if let Some(output) = self.exec_handles.get(&handle) {
+            let start = offset as usize;
+            if start >= output.len() {
+                return Err(StatusCode::Eof);
+            }
+            let end = std::cmp::min(start + len as usize, output.len());
+            return Ok(Data {
+                id,
+                data: output[start..end].to_vec(),
+            });
+        }
+
         let file = self
             .file_handles
             .get_mut(&handle)
@@ -213,12 +241,34 @@ impl russh_sftp::server::Handler for SftpHandler {
 
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         info!("SFTP stat: {}", path);
+
+        if exec::is_exec_path(&path) {
+            let attrs = if let Some(cmd) = exec::extract_command(&path) {
+                let output = exec::run_command(cmd);
+                exec::exec_file_attrs(output.len() as u64)
+            } else {
+                exec::exec_dir_attrs()
+            };
+            return Ok(Attrs { id, attrs });
+        }
+
         let attrs = path_attrs(&path).await?;
         Ok(Attrs { id, attrs })
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         info!("SFTP lstat: {}", path);
+
+        if exec::is_exec_path(&path) {
+            let attrs = if let Some(cmd) = exec::extract_command(&path) {
+                let output = exec::run_command(cmd);
+                exec::exec_file_attrs(output.len() as u64)
+            } else {
+                exec::exec_dir_attrs()
+            };
+            return Ok(Attrs { id, attrs });
+        }
+
         let attrs = lpath_attrs(&path).await?;
         Ok(Attrs { id, attrs })
     }
@@ -281,6 +331,16 @@ impl russh_sftp::server::Handler for SftpHandler {
 
     async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
         info!("SFTP opendir: {}", path);
+
+        // /exec/ is a virtual directory — no filesystem check needed.
+        if exec::is_exec_path(&path) && exec::extract_command(&path).is_none() {
+            let handle = self.alloc_handle();
+            // Use a sentinel path so readdir can identify it as the exec dir.
+            self.dir_handles
+                .insert(handle.clone(), (PathBuf::from("/exec/"), false));
+            return Ok(Handle { id, handle });
+        }
+
         // Verify the path is a valid directory.
         let meta = fs::metadata(&path).await.map_err(|e| {
             error!("SFTP opendir error: {}", e);
@@ -309,6 +369,16 @@ impl russh_sftp::server::Handler for SftpHandler {
 
         *read_done = true;
         let dir_path = path.clone();
+
+        // Virtual /exec/ directory — return only . and .. entries.
+        if dir_path.as_os_str() == "/exec/" {
+            let dir_attrs = exec::exec_dir_attrs();
+            let files = vec![
+                File::new(".", dir_attrs.clone()),
+                File::new("..", dir_attrs),
+            ];
+            return Ok(Name { id, files });
+        }
 
         let mut entries = fs::read_dir(&dir_path).await.map_err(|e| {
             error!("SFTP readdir error: {}", e);
@@ -416,6 +486,20 @@ impl russh_sftp::server::Handler for SftpHandler {
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         info!("SFTP realpath: {}", path);
+
+        // Virtual /exec/ paths resolve to themselves.
+        if exec::is_exec_path(&path) {
+            let resolved = if exec::extract_command(&path).is_some() {
+                path
+            } else {
+                "/exec/".to_string()
+            };
+            return Ok(Name {
+                id,
+                files: vec![File::dummy(resolved)],
+            });
+        }
+
         let canonical = fs::canonicalize(&path).await.map_err(|e| {
             error!("SFTP realpath error: {}", e);
             io_to_status(&e)
