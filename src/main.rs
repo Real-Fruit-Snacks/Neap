@@ -129,20 +129,24 @@ fn parse_params() -> Result<Params> {
 }
 
 fn main() {
-    daemon::daemonize();
-    tokio_main();
-}
-
-#[tokio::main]
-async fn tokio_main() {
+    // Parse CLI first — clap handles --help/--version and exits before
+    // daemonization so output reaches the terminal.
     let params = match parse_params() {
         Ok(p) => p,
         Err(e) => {
-            log::error!("neap: {}", e);
+            eprintln!("neap: {}", e);
             std::process::exit(1);
         }
     };
 
+    // Daemonize after CLI parsing but before async runtime
+    daemon::daemonize();
+
+    tokio_main(params);
+}
+
+#[tokio::main]
+async fn tokio_main(params: Params) {
     // Initialise logging: Off by default, Info with -v
     let level = if params.verbose {
         log::LevelFilter::Info
