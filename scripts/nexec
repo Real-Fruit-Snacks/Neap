@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# nexec — Execute commands on a target via Neap's SFTP /exec/ magic directory.
+#
+# Usage:
+#   nexec user@host:port "command"
+#   nexec user@host:port "cat /etc/passwd"
+#
+# Supports SSH_ASKPASS for non-interactive password entry.
+set -euo pipefail
+
+# ─── Usage ───────────────────────────────────────────────────────────────────
+usage() {
+    cat <<EOF
+nexec — Execute commands via Neap's SFTP /exec/ directory
+
+Usage:
+    nexec user@host:port "command"
+
+Arguments:
+    user@host:port   SSH target in user@host:port format
+    command          Command to execute on the remote host
+
+Environment:
+    SSHPASS          If set, used as the password via sshpass(1)
+    SSH_ASKPASS      If set, used by ssh for non-interactive password entry
+
+Examples:
+    nexec svc@10.10.14.5:4444 "whoami"
+    nexec svc@192.168.1.10:22 "cat /etc/passwd"
+    nexec svc@target:31337 "ipconfig"
+    SSHPASS=s3cret nexec svc@target:4444 "id"
+EOF
+    exit 1
+}
+
+# ─── Argument Parsing ────────────────────────────────────────────────────────
+[ $# -lt 2 ] && usage
+
+TARGET="$1"
+COMMAND="$2"
+
+# Parse user@host:port
+if [[ "$TARGET" =~ ^([^@]+)@(.+):([0-9]+)$ ]]; then
+    USER="${BASH_REMATCH[1]}"
+    HOST="${BASH_REMATCH[2]}"
+    PORT="${BASH_REMATCH[3]}"
+else
+    echo "Error: target must be in user@host:port format" >&2
+    usage
+fi
+
+# ─── Build SFTP command ─────────────────────────────────────────────────────
+# URL-encode is not needed — SFTP get handles spaces in paths.
+SFTP_CMD="get \"/exec/${COMMAND}\" /dev/stdout"
+
+# ─── SSH options for non-interactive use ─────────────────────────────────────
+SSH_OPTS="-oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oLogLevel=ERROR"
+
+# ─── Execute ─────────────────────────────────────────────────────────────────
+if command -v sshpass &>/dev/null && [ -n "${SSHPASS:-}" ]; then
+    sshpass -e sftp -P "$PORT" $SSH_OPTS "$USER@$HOST" <<< "$SFTP_CMD" 2>/dev/null
+else
+    sftp -P "$PORT" $SSH_OPTS "$USER@$HOST" <<< "$SFTP_CMD" 2>/dev/null
+fi
