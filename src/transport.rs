@@ -138,9 +138,18 @@ pub async fn run(params: &Params) -> Result<()> {
     let host_key = generate_host_key()?;
     let ssh_config = build_config(host_key);
 
+    let shared_memfs = if params.memfs {
+        log::info!("In-memory SFTP enabled (no disk artifacts)");
+        Some(crate::memfs::new_shared())
+    } else {
+        None
+    };
+
     let server = NeapServer {
         shell: params.shell.clone(),
         no_shell: params.no_shell,
+        memfs: params.memfs,
+        shared_memfs,
     };
 
     let server_future = async {

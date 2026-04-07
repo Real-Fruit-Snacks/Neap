@@ -12,6 +12,7 @@ fn main() {
         ("NEAP_NOCLI", ""),
         ("NEAP_TLS_WRAP", ""),
         ("NEAP_TLS_SNI", "www.microsoft.com"),
+        ("NEAP_MEMFS", ""),
     ];
 
     for (key, default) in &vars {
