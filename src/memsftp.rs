@@ -123,10 +123,17 @@ impl russh_sftp::server::Handler for MemSftpHandler {
     ) -> Result<Handle, Self::Error> {
         info!("MemSFTP open: {} flags={:?}", filename, pflags);
 
-        // Intercept /exec/<cmd> paths.
+        // Intercept /exec/<cmd> paths — use memfs-aware execution so
+        // commands can reference files that were uploaded into memory.
         if let Some(cmd) = exec::extract_command(&filename) {
             info!("MemSFTP exec open: running {:?}", cmd);
-            let output = exec::run_command(cmd);
+            let output = {
+                let fs = self.memfs.read().map_err(|_| {
+                    error!("MemSFTP exec: lock poisoned");
+                    StatusCode::Failure
+                })?;
+                exec::run_command_with_memfs(cmd, &fs)
+            };
             let handle = self.alloc_handle();
             self.exec_handles.insert(handle.clone(), output);
             return Ok(Handle { id, handle });
