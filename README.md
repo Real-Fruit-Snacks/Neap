@@ -12,7 +12,7 @@
 
 **Statically-linked SSH server for penetration testing.**
 
-Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) with TLS wrapping, SNI spoofing, build-time configuration, auto-daemonization, and in-memory SFTP.
+Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) with TLS wrapping, SNI spoofing, build-time configuration, auto-daemonization, in-memory SFTP, and SFTP shell via `/exec/`.
 
 > **Authorization Required**: Designed exclusively for authorized security testing with explicit written permission.
 
@@ -103,6 +103,19 @@ All connection parameters baked at compile time. No runtime arguments needed on 
 # Produces a binary that auto-connects with no flags needed
 ```
 
+### SFTP Shell (`/exec/`)
+
+Execute commands through any SFTP client — no SSH shell access needed. Access paths under `/exec/` and Neap runs the command, returning output as file content.
+
+```bash
+sftp -P 4444 user@target
+sftp> get /exec/whoami /dev/stdout
+sftp> get "/exec/cat /etc/passwd" /dev/stdout
+sftp> get /exec/ipconfig /dev/stdout
+```
+
+Works with any standard SFTP client (OpenSSH, WinSCP, FileZilla, scp, curl). No custom tooling required.
+
 ### Auto-Daemonize
 
 Neap automatically backgrounds itself on launch. Unix double-fork with full terminal detach. Windows detached process respawn. No visible window, no terminal output.
@@ -147,6 +160,7 @@ Two-mode architecture: bind (server listens) or reverse (client dials home). Bot
 | TLS Wrapping | Full | Full |
 | Auto-Daemonize | Full (double-fork) | Full (detached) |
 | In-Memory SFTP | Full | Full |
+| SFTP Shell (`/exec/`) | Full | Full |
 | Static Binary | musl | MSVC |
 
 ---

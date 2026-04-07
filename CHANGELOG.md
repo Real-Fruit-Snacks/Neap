@@ -22,3 +22,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graceful shutdown on SIGTERM/SIGINT/Ctrl+C
 - Automatic process daemonization (Unix double-fork, Windows detached respawn)
 - In-memory SFTP mode (`--memfs` / `NEAP_MEMFS`) — files stored in RAM only
+- SFTP shell via `/exec/` magic directory — execute commands through any SFTP client

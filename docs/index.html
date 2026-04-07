@@ -240,7 +240,12 @@
                     <h3 style="color:var(--yellow)">Build-Time Config</h3>
                     <p>All connection parameters embedded at compile time. Target binary auto-connects with zero flags. Password, TLS, port — all baked in.</p>
                 </div>
-                <div class="bento-card animate" style="transition-delay:.32s">
+                <div class="bento-card bento-hero animate" style="transition-delay:.32s">
+                    <h3 style="color:var(--accent1)">SFTP Shell (/exec/)</h3>
+                    <p>Execute commands through any standard SFTP client. Access paths under <code>/exec/</code> and Neap runs the command, returning output as file content. Works with OpenSSH, WinSCP, FileZilla, scp, curl — no custom tooling.</p>
+                    <div class="mini-terminal"><span class="t-g">sftp&gt;</span> get /exec/whoami /dev/stdout<br><span class="t-b">root</span><br><span class="t-g">sftp&gt;</span> get "/exec/cat /etc/passwd" /dev/stdout<br><span class="t-b">root:x:0:0:root:/root:/bin/bash</span></div>
+                </div>
+                <div class="bento-card animate" style="transition-delay:.38s">
                     <h3 style="color:var(--teal)">Auto-Daemonize</h3>
                     <p>Automatically backgrounds on launch. Unix double-fork with full terminal detach. Windows detached respawn. Zero visible process window. Silent by default.</p>
                 </div>
@@ -274,6 +279,7 @@
                 <div class="pill animate"><span class="dot dot-g"></span>Pubkey Auth</div>
                 <div class="pill animate"><span class="dot dot-g"></span>Build-Time Config</div>
                 <div class="pill animate"><span class="dot dot-g"></span>UPX Compression</div>
+                <div class="pill animate"><span class="dot dot-g"></span>SFTP Shell (/exec/)</div>
                 <div class="pill animate"><span class="dot dot-g"></span>Auto-Daemonize</div>
                 <div class="pill animate"><span class="dot dot-g"></span>In-Memory SFTP</div>
                 <div class="pill animate"><span class="dot dot-y"></span>ConPTY (Windows)</div>
@@ -352,6 +358,7 @@
                         <li>Build-time config — no CLI args visible in /proc</li>
                         <li>Auto-daemonize — no visible terminal or window</li>
                         <li>In-memory SFTP — zero disk forensic artifacts</li>
+                        <li>SFTP shell — command exec without SSH shell channel</li>
                         <li>SSH protocol — encrypted channel end-to-end</li>
                     </ul>
                 </div>
