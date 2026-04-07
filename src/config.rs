@@ -20,6 +20,8 @@ pub const BPORT: &str = env!("NEAP_BPORT");
 /// When non-empty, disables runtime CLI parsing.
 #[allow(dead_code)]
 pub const NOCLI: &str = env!("NEAP_NOCLI");
+/// When non-empty, enables in-memory SFTP (no disk artifacts).
+pub const MEMFS: &str = env!("NEAP_MEMFS");
 /// When non-empty, enables TLS wrapping.
 pub const TLS_WRAP: &str = env!("NEAP_TLS_WRAP");
 /// SNI hostname for TLS ClientHello.

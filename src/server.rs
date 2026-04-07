@@ -54,6 +54,8 @@ pub fn build_config(host_key: KeyPair) -> Arc<Config> {
 pub struct NeapServer {
     pub shell: String,
     pub no_shell: bool,
+    pub memfs: bool,
+    pub shared_memfs: Option<crate::memfs::SharedMemFs>,
 }
 
 #[async_trait]
@@ -69,6 +71,8 @@ impl russh::server::Server for NeapServer {
             peer_addr: addr,
             shell: self.shell.clone(),
             no_shell: self.no_shell,
+            memfs: self.memfs,
+            shared_memfs: self.shared_memfs.clone(),
             pty_info: HashMap::new(),
             channels: HashMap::new(),
             #[cfg(unix)]
@@ -89,6 +93,8 @@ pub struct NeapHandler {
     pub peer_addr: String,
     pub shell: String,
     pub no_shell: bool,
+    pub memfs: bool,
+    pub shared_memfs: Option<crate::memfs::SharedMemFs>,
     /// PTY request parameters stored per channel, set by `pty_request` and
     /// consumed by `shell_request`.
     pub pty_info: HashMap<ChannelId, PtyInfo>,
@@ -412,10 +418,22 @@ impl Handler for NeapHandler {
             );
             if let Some(ch) = self.channels.remove(&channel) {
                 session.channel_success(channel);
-                let sftp = crate::sftp::SftpHandler::new();
-                tokio::spawn(async move {
-                    russh_sftp::server::run(ch.into_stream(), sftp).await;
-                });
+                if self.memfs {
+                    if let Some(ref memfs) = self.shared_memfs {
+                        let handler = crate::memsftp::MemSftpHandler::new(memfs.clone());
+                        tokio::spawn(async move {
+                            russh_sftp::server::run(ch.into_stream(), handler).await;
+                        });
+                    } else {
+                        error!("SFTP: memfs enabled but no SharedMemFs available");
+                        session.channel_failure(channel);
+                    }
+                } else {
+                    let sftp = crate::sftp::SftpHandler::new();
+                    tokio::spawn(async move {
+                        russh_sftp::server::run(ch.into_stream(), sftp).await;
+                    });
+                }
             } else {
                 error!("SFTP: no stored channel for {:?}", channel);
                 session.channel_failure(channel);

@@ -3,6 +3,8 @@ mod daemon;
 mod error;
 mod forwarding;
 mod info;
+mod memfs;
+mod memsftp;
 mod pty;
 mod server;
 mod session;
@@ -24,6 +26,7 @@ pub struct Params {
     pub verbose: bool,
     pub tls_wrap: bool,
     pub tls_sni: String,
+    pub memfs: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +64,10 @@ fn parse_params() -> Result<Params> {
         #[arg(short = 'v', long = "verbose")]
         verbose: bool,
 
+        /// Use in-memory filesystem for SFTP (no disk artifacts)
+        #[arg(long = "memfs")]
+        memfs: bool,
+
         /// [user@]host – target for reverse-shell mode
         #[arg(name = "TARGET")]
         target: Option<String>,
@@ -90,6 +97,7 @@ fn parse_params() -> Result<Params> {
         verbose: cli.verbose,
         tls_wrap: !config::TLS_WRAP.is_empty(),
         tls_sni: config::TLS_SNI.to_string(),
+        memfs: cli.memfs || !config::MEMFS.is_empty(),
     })
 }
 
@@ -116,6 +124,7 @@ fn parse_params() -> Result<Params> {
         verbose: false,
         tls_wrap: !config::TLS_WRAP.is_empty(),
         tls_sni: config::TLS_SNI.to_string(),
+        memfs: !config::MEMFS.is_empty(),
     })
 }
 
