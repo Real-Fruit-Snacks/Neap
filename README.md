@@ -17,6 +17,8 @@ Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow).
 - Password + public key authentication
 - Build-time configuration
 - Single static binary
+- Automatic process daemonization (silent background operation)
+- In-memory SFTP (`--memfs`) — RAM-only file storage, zero disk artifacts
 
 ## Build
 
@@ -48,6 +50,9 @@ neap -p 31337 kali@192.168.1.10
 
 # Verbose
 neap -v -l -p 4444
+
+# In-memory SFTP (no files touch disk)
+neap --memfs -l -p 4444
 ```
 
 ## License

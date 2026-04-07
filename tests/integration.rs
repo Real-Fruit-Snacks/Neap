@@ -164,3 +164,52 @@ fn test_binary_version_flag() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("neap") || stdout.contains("1.0.0"));
 }
+
+// ---------------------------------------------------------------------------
+// 5. MemFs integration tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_memfs_create_read_write() {
+    use std::path::Path;
+    let mut fs = neap::memfs::MemFs::new();
+    fs.create_file(Path::new("/test"), b"hello".to_vec())
+        .unwrap();
+    assert_eq!(
+        fs.read_at(Path::new("/test"), 0, 5).unwrap(),
+        b"hello".to_vec()
+    );
+    fs.write_at(Path::new("/test"), 5, b" world").unwrap();
+    assert_eq!(
+        fs.read_at(Path::new("/test"), 0, 11).unwrap(),
+        b"hello world".to_vec()
+    );
+}
+
+#[test]
+fn test_memfs_directory_operations() {
+    use std::path::Path;
+    let mut fs = neap::memfs::MemFs::new();
+    fs.mkdir(Path::new("/data")).unwrap();
+    assert!(fs.is_dir(Path::new("/data")));
+    fs.create_file(Path::new("/data/file.bin"), vec![0xDE, 0xAD])
+        .unwrap();
+    assert!(fs.remove_dir(Path::new("/data")).is_err()); // not empty
+    fs.remove_file(Path::new("/data/file.bin")).unwrap();
+    fs.remove_dir(Path::new("/data")).unwrap();
+    assert!(!fs.exists(Path::new("/data")));
+}
+
+#[test]
+fn test_memfs_rename() {
+    use std::path::Path;
+    let mut fs = neap::memfs::MemFs::new();
+    fs.create_file(Path::new("/src"), b"payload".to_vec())
+        .unwrap();
+    fs.rename(Path::new("/src"), Path::new("/dst")).unwrap();
+    assert!(!fs.exists(Path::new("/src")));
+    assert_eq!(
+        fs.read_file(Path::new("/dst")).unwrap(),
+        b"payload".to_vec()
+    );
+}
