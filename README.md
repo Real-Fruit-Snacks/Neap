@@ -62,8 +62,9 @@ neap -p 31337 kali@192.168.1.10
 Listen for incoming SSH connections on a specified port.
 
 ```bash
-neap -l -p 4444
-neap -v -l -p 4444   # verbose
+neap -l -p 4444              # backgrounds automatically
+neap -f -l -p 4444           # stay in foreground (see output)
+neap -f -v -l -p 4444        # foreground + verbose logging
 ```
 
 ### SFTP File Transfer
@@ -136,7 +137,15 @@ On Linux, uses `memfd_create()` — the binary runs from RAM via `/proc/self/fd/
 
 ### Auto-Daemonize
 
-Neap automatically backgrounds itself on launch. Unix double-fork with full terminal detach. Windows detached process respawn. No visible window, no terminal output.
+Neap automatically backgrounds itself on launch. Unix double-fork with full terminal detach. Windows detached process respawn. A one-line confirmation is printed before backgrounding so you know it started.
+
+Use `-f` / `--foreground` to keep the process in the terminal (useful for debugging or when you need to see connection logs):
+
+```bash
+neap -f -v -l -p 4444        # foreground with verbose logging
+```
+
+For NOCLI builds, set `NEAP_FOREGROUND=1` at compile time to disable auto-daemonization.
 
 ### In-Memory SFTP
 

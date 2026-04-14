@@ -20,6 +20,8 @@ pub const BPORT: &str = env!("NEAP_BPORT");
 /// When non-empty, disables runtime CLI parsing.
 #[allow(dead_code)]
 pub const NOCLI: &str = env!("NEAP_NOCLI");
+/// When non-empty, runs in foreground (no daemonization).
+pub const FOREGROUND: &str = env!("NEAP_FOREGROUND");
 /// When non-empty, enables in-memory SFTP (no disk artifacts).
 pub const MEMFS: &str = env!("NEAP_MEMFS");
 /// When non-empty, enables TLS wrapping.

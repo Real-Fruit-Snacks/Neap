@@ -25,6 +25,7 @@ pub struct Params {
     pub shell: String,
     pub no_shell: bool,
     pub verbose: bool,
+    pub foreground: bool,
     pub tls_wrap: bool,
     pub tls_sni: String,
     pub memfs: bool,
@@ -65,6 +66,10 @@ fn parse_params() -> Result<Params> {
         #[arg(short = 'v', long = "verbose")]
         verbose: bool,
 
+        /// Run in foreground (don't daemonize)
+        #[arg(short = 'f', long = "foreground")]
+        foreground: bool,
+
         /// Use in-memory filesystem for SFTP (no disk artifacts)
         #[arg(long = "memfs")]
         memfs: bool,
@@ -96,6 +101,7 @@ fn parse_params() -> Result<Params> {
         shell: cli.shell,
         no_shell: cli.no_shell,
         verbose: cli.verbose,
+        foreground: cli.foreground,
         tls_wrap: !config::TLS_WRAP.is_empty(),
         tls_sni: config::TLS_SNI.to_string(),
         memfs: cli.memfs || !config::MEMFS.is_empty(),
@@ -123,6 +129,7 @@ fn parse_params() -> Result<Params> {
         shell: config::DEFAULT_SHELL.to_string(),
         no_shell: false,
         verbose: false,
+        foreground: !config::FOREGROUND.is_empty(),
         tls_wrap: !config::TLS_WRAP.is_empty(),
         tls_sni: config::TLS_SNI.to_string(),
         memfs: !config::MEMFS.is_empty(),
@@ -140,10 +147,22 @@ fn main() {
         }
     };
 
-    // Daemonize after CLI parsing but before async runtime
-    daemon::daemonize();
+    if params.foreground {
+        // Run in foreground — no daemonization, output stays on the terminal
+        tokio_main(params);
+    } else {
+        // Print a one-line confirmation before daemonizing since all
+        // output will be lost after the fork.
+        let mode = if params.listen || params.lhost.is_empty() {
+            format!("listening on :{}", params.lport)
+        } else {
+            format!("connecting to {}:{}", params.lhost, params.lport)
+        };
+        eprintln!("neap: {} (backgrounded, use -f to stay in foreground)", mode);
 
-    tokio_main(params);
+        daemon::daemonize();
+        tokio_main(params);
+    }
 }
 
 #[tokio::main]
