@@ -137,15 +137,16 @@ On Linux, uses `memfd_create()` — the binary runs from RAM via `/proc/self/fd/
 
 ### Auto-Daemonize
 
-Neap automatically backgrounds itself on launch. Unix double-fork with full terminal detach. Windows detached process respawn. A one-line confirmation is printed before backgrounding so you know it started.
+Neap automatically backgrounds itself on launch. Reverse mode always daemonizes silently (no output on target). Bind/listen mode prints a one-line confirmation before backgrounding so you know the listener started.
 
-Use `-f` / `--foreground` to keep the process in the terminal (useful for debugging or when you need to see connection logs):
+Use `-f` / `--foreground` to keep the listener in the terminal (bind mode only — ignored in reverse mode):
 
 ```bash
+neap -f -l -p 4444           # foreground, see when clients connect
 neap -f -v -l -p 4444        # foreground with verbose logging
 ```
 
-For NOCLI builds, set `NEAP_FOREGROUND=1` at compile time to disable auto-daemonization.
+For NOCLI builds, set `NEAP_FOREGROUND=1` at compile time to disable auto-daemonization in bind mode.
 
 ### In-Memory SFTP
 
@@ -162,14 +163,22 @@ neap --memfs -l -p 4444
 
 ```
 src/
-├── main.rs          # Entry point and mode dispatch
-├── server/          # SSH server implementation
-├── client/          # Reverse connection client
-├── shell/           # PTY handling (Linux + Windows ConPTY)
-├── sftp/            # SFTP subsystem
-├── forward/         # Port forwarding (local, remote, dynamic)
-├── tls/             # TLS wrapping with SNI spoofing
-└── config/          # Build-time configuration embedding
+├── main.rs          # Entry point, CLI parsing, daemonization
+├── config.rs        # Build-time configuration constants
+├── daemon.rs        # Auto-daemonize (Unix double-fork / Windows detach)
+├── transport.rs     # Bind and reverse mode connection logic, TLS wrapping
+├── server.rs        # SSH server handler, authentication, channel dispatch
+├── session.rs       # Command execution, environment setup
+├── pty/             # PTY handling
+│   ├── unix.rs      # Linux openpty
+│   └── windows.rs   # Windows ConPTY
+├── sftp.rs          # SFTP subsystem (disk-backed)
+├── memfs.rs         # In-memory filesystem for memsftp
+├── memsftp.rs       # SFTP subsystem (RAM-only, no disk artifacts)
+├── exec.rs          # /exec/ SFTP shell — run commands via SFTP paths
+├── forwarding.rs    # Local, remote, and dynamic port forwarding
+├── info.rs          # System info gathering (reverse mode callback)
+└── error.rs         # Error types
 ```
 
 Two-mode architecture: bind (server listens) or reverse (client dials home). Both share the same SSH session layer with pluggable subsystems for shell, SFTP, and forwarding. TLS wrapping is transparent and optional.

@@ -66,7 +66,7 @@ fn parse_params() -> Result<Params> {
         #[arg(short = 'v', long = "verbose")]
         verbose: bool,
 
-        /// Run in foreground (don't daemonize)
+        /// Run listener in foreground (bind mode only, ignored in reverse)
         #[arg(short = 'f', long = "foreground")]
         foreground: bool,
 
