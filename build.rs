@@ -12,7 +12,6 @@ fn main() {
         ("NEAP_NOCLI", ""),
         ("NEAP_TLS_WRAP", ""),
         ("NEAP_TLS_SNI", "www.microsoft.com"),
-        ("NEAP_FOREGROUND", ""),
         ("NEAP_MEMFS", ""),
     ];
 
