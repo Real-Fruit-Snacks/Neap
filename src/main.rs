@@ -147,18 +147,17 @@ fn main() {
         }
     };
 
-    if params.foreground {
-        // Run in foreground — no daemonization, output stays on the terminal
+    let is_bind = params.listen || params.lhost.is_empty();
+
+    if is_bind && params.foreground {
+        // Bind mode + foreground — no daemonization, output stays on the terminal
         tokio_main(params);
     } else {
-        // Print a one-line confirmation before daemonizing since all
-        // output will be lost after the fork.
-        let mode = if params.listen || params.lhost.is_empty() {
-            format!("listening on :{}", params.lport)
-        } else {
-            format!("connecting to {}:{}", params.lhost, params.lport)
-        };
-        eprintln!("neap: {} (backgrounded, use -f to stay in foreground)", mode);
+        // Always daemonize in reverse mode (no output on target).
+        // In bind mode, print a one-line confirmation before backgrounding.
+        if is_bind {
+            eprintln!("neap: listening on :{} (backgrounded, use -f to stay in foreground)", params.lport);
+        }
 
         daemon::daemonize();
         tokio_main(params);
