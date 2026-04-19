@@ -156,6 +156,23 @@ sanitize_for_filename() {
     echo "$1" | tr -c 'A-Za-z0-9._-' '_'
 }
 
+# Print one row of the Neap Build Configuration box.
+#   $1 = content already colored (e.g. "${TEXT}Mode:${RESET}      ${GREEN}$MODE${RESET}")
+# Wraps the content with left/right mauve │ borders and pads so the right
+# border lands at column 42 (matching the 41-char inner width of the top
+# and bottom rules). ANSI escape sequences are stripped before measuring
+# so colors don't throw off the padding.
+_neap_box_row() {
+    local content="$1"
+    local visible
+    visible=$(printf '%s' "$content" | sed 's/\x1b\[[0-9;]*m//g')
+    local pad=$(( 41 - 2 - ${#visible} ))
+    (( pad < 0 )) && pad=0
+    local spaces
+    printf -v spaces '%*s' "$pad" ''
+    echo -e "${MAUVE}│${RESET}  ${content}${spaces}${MAUVE}│${RESET}"
+}
+
 # ─── Build ───────────────────────────────────────────────────────────────────
 build() {
     info "Building Neap..."
@@ -165,31 +182,31 @@ build() {
     echo -e "${MAUVE}┌─────────────────────────────────────────┐${RESET}"
     echo -e "${MAUVE}│${RESET}  ${TEAL}Neap Build Configuration${RESET}               ${MAUVE}│${RESET}"
     echo -e "${MAUVE}├─────────────────────────────────────────┤${RESET}"
-    echo -e "${MAUVE}│${RESET}  ${TEXT}Mode:${RESET}      ${GREEN}$MODE${RESET}"
+    _neap_box_row "${TEXT}Mode:${RESET}      ${GREEN}${MODE}${RESET}"
     if [ "$MODE" = "reverse" ]; then
-        echo -e "${MAUVE}│${RESET}  ${TEXT}Target:${RESET}    ${PEACH}$HOST:$PORT${RESET}"
+        _neap_box_row "${TEXT}Target:${RESET}    ${PEACH}${HOST}:${PORT}${RESET}"
     else
-        echo -e "${MAUVE}│${RESET}  ${TEXT}Port:${RESET}      ${PEACH}$PORT${RESET}"
+        _neap_box_row "${TEXT}Port:${RESET}      ${PEACH}${PORT}${RESET}"
     fi
-    echo -e "${MAUVE}│${RESET}  ${TEXT}Password:${RESET}  ${YELLOW}$PASSWORD${RESET}"
-    echo -e "${MAUVE}│${RESET}  ${TEXT}Shell:${RESET}     ${TEXT}$SHELL_PATH${RESET}"
-    echo -e "${MAUVE}│${RESET}  ${TEXT}User:${RESET}      ${TEXT}$LUSER${RESET}"
+    _neap_box_row "${TEXT}Password:${RESET}  ${YELLOW}${PASSWORD}${RESET}"
+    _neap_box_row "${TEXT}Shell:${RESET}     ${TEXT}${SHELL_PATH}${RESET}"
+    _neap_box_row "${TEXT}User:${RESET}      ${TEXT}${LUSER}${RESET}"
     if [ -n "$TLS_WRAP" ]; then
-        echo -e "${MAUVE}│${RESET}  ${TEXT}TLS:${RESET}       ${GREEN}enabled${RESET} (SNI: ${TEAL}$TLS_SNI${RESET})"
+        _neap_box_row "${TEXT}TLS:${RESET}       ${GREEN}enabled${RESET} (SNI: ${TEAL}${TLS_SNI}${RESET})"
     else
-        echo -e "${MAUVE}│${RESET}  ${TEXT}TLS:${RESET}       ${SUBTEXT}disabled${RESET}"
+        _neap_box_row "${TEXT}TLS:${RESET}       ${SUBTEXT}disabled${RESET}"
     fi
     if [ -n "$PUBKEY" ]; then
-        echo -e "${MAUVE}│${RESET}  ${TEXT}PubKey:${RESET}    ${SUBTEXT}configured${RESET}"
+        _neap_box_row "${TEXT}PubKey:${RESET}    ${SUBTEXT}configured${RESET}"
     fi
     if [ -n "$NOCLI" ]; then
-        echo -e "${MAUVE}│${RESET}  ${TEXT}CLI:${RESET}       ${YELLOW}disabled${RESET}"
+        _neap_box_row "${TEXT}CLI:${RESET}       ${YELLOW}disabled${RESET}"
     fi
     if [ -n "$TARGET" ]; then
-        echo -e "${MAUVE}│${RESET}  ${TEXT}Target:${RESET}    ${PEACH}$TARGET${RESET}"
+        _neap_box_row "${TEXT}Target:${RESET}    ${PEACH}${TARGET}${RESET}"
     fi
     if $COMPRESS; then
-        echo -e "${MAUVE}│${RESET}  ${TEXT}Compress:${RESET}  ${GREEN}UPX${RESET}"
+        _neap_box_row "${TEXT}Compress:${RESET}  ${GREEN}UPX${RESET}"
     fi
     echo -e "${MAUVE}└─────────────────────────────────────────┘${RESET}"
     echo ""
