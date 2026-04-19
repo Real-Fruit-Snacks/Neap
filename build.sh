@@ -165,12 +165,20 @@ sanitize_for_filename() {
 #   $1 = content already colored (e.g. "${TEXT}Mode:${RESET}      ${GREEN}$MODE${RESET}")
 # Wraps the content with left/right mauve │ borders and pads so the right
 # border lands at column 42 (matching the 41-char inner width of the top
-# and bottom rules). ANSI escape sequences are stripped before measuring
-# so colors don't throw off the padding.
+# and bottom rules).
+#
+# IMPORTANT: the color vars in this script are defined with single quotes
+# ('\033[...m'), so they hold the LITERAL 7+ characters — not a real ESC
+# byte. A naive ANSI-strip that only matches real ESC bytes would see
+# those literals as visible content and clamp the padding to 0 (giving
+# "reverse│" flush against the border). Expand the escapes with
+# `printf '%b'` first so the strip measures the rendered width.
 _neap_box_row() {
     local content="$1"
+    local expanded
+    expanded=$(printf '%b' "$content")
     local visible
-    visible=$(printf '%s' "$content" | sed 's/\x1b\[[0-9;]*m//g')
+    visible=$(printf '%s' "$expanded" | sed 's/\x1b\[[0-9;]*m//g')
     local pad=$(( 41 - 2 - ${#visible} ))
     (( pad < 0 )) && pad=0
     local spaces
