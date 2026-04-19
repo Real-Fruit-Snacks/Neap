@@ -152,8 +152,13 @@ generate_password() {
 }
 
 # ─── Sanitize for Filename ──────────────────────────────────────────────────
+# NOTE: use printf, not echo — `echo` appends a newline which `tr` then
+# replaces with '_' (newline isn't in the keep class), producing a spurious
+# trailing underscore like "neap_10.0.0.1_4444_" or "nexec-10.0.0.1_-4444".
+# Command substitution strips trailing newlines, but only *literal* ones —
+# by the time $(...) sees the output, tr has already converted it to '_'.
 sanitize_for_filename() {
-    echo "$1" | tr -c 'A-Za-z0-9._-' '_'
+    printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'
 }
 
 # Print one row of the Neap Build Configuration box.
