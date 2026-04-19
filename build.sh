@@ -42,8 +42,14 @@ HANDLER_DIR="handlers"
 TARGET=""
 
 # ─── Usage ───────────────────────────────────────────────────────────────────
+# Color vars are single-quoted ('\033[...m'), so they hold literal backslash
+# escapes — `cat` would pass them through verbatim and the terminal would
+# show raw "\033[...m" text. Read the heredoc line-by-line and hand each
+# line to `printf '%b\n'` so the escape sequences are rendered as ANSI.
 usage() {
-    cat <<USAGE
+    while IFS= read -r _line; do
+        printf '%b\n' "$_line"
+    done <<USAGE
 ${MAUVE}Neap Build Script${RESET}
 ${SUBTEXT}Rust rewrite of Undertow — statically-linked SSH server for penetration testing${RESET}
 
